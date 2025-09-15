@@ -9,6 +9,10 @@ A small macOS SwiftUI GUI wrapper for rsync. It lets you pick local source/targe
 
 This repository contains a minimal, modern-looking macOS app that demonstrates the core features you requested. It intentionally relies on the system rsync and ssh for remote transfers.
 
+<div align="center">
+             <img src="/window1.png" width="500" />
+</div>
+
 Quick features
 - Local and remote source/target selection (remote entered as `user@host:/path`).
 - Common options exposed: Archive (-a), Verbose (-v), Human readable (-h), --progress, --delete, --dry-run.
