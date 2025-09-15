@@ -1,5 +1,5 @@
 <div align="center">
-             <img src="/RSYNC-GUI.png" width="500" />
+             <img src="/RSYNC-GUI.png" width="400" />
 </div>
 
 RSYNC-GUI
