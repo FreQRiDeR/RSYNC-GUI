@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		DCB131222E78B52B00C2AAAC /* sshpass in Resources */ = {isa = PBXBuildFile; fileRef = DCB131212E78B52B00C2AAAC /* sshpass */; };
-		DCB131242E78B71100C2AAAC /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = DCB131232E78B71100C2AAAC /* README.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -17,9 +16,22 @@
 		DCB131232E78B71100C2AAAC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		DC9793952E78BA290051509E /* Exceptions for "RSYNC-GUI" folder in "RSYNC-GUI" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"RSYNC-GUI.png",
+			);
+			target = DC7A597E2E787A8700599FEF /* RSYNC-GUI */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		DC7A59812E787A8700599FEF /* RSYNC-GUI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DC9793952E78BA290051509E /* Exceptions for "RSYNC-GUI" folder in "RSYNC-GUI" target */,
+			);
 			path = "RSYNC-GUI";
 			sourceTree = "<group>";
 		};
@@ -118,7 +130,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DCB131242E78B71100C2AAAC /* README.md in Resources */,
 				DCB131222E78B52B00C2AAAC /* sshpass in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
