@@ -48,3 +48,6 @@ Next improvements (optional)
 
 Contact
 If you want me to add remote browsing, improve output streaming, or add persistent profiles, tell me which feature to implement next and I'll proceed.
+
+Thanks for using RSYNC-GUI!
+FreqRiDeR
