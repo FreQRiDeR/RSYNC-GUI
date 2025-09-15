@@ -2,7 +2,7 @@
 //  Persistence.swift
 //  RSYNC-GUI
 //
-//  Created by terraMODA on 9/15/25.
+//  Created by FreQRiDeR on 9/15/25.
 //
 
 import CoreData

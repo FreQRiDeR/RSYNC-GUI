@@ -6,8 +6,15 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		DCB131222E78B52B00C2AAAC /* sshpass in Resources */ = {isa = PBXBuildFile; fileRef = DCB131212E78B52B00C2AAAC /* sshpass */; };
+		DCB131242E78B71100C2AAAC /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = DCB131232E78B71100C2AAAC /* README.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		DC7A597F2E787A8700599FEF /* RSYNC-GUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "RSYNC-GUI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		DCB131212E78B52B00C2AAAC /* sshpass */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = sshpass; sourceTree = "<group>"; };
+		DCB131232E78B71100C2AAAC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -32,6 +39,8 @@
 		DC7A59762E787A8700599FEF = {
 			isa = PBXGroup;
 			children = (
+				DCB131232E78B71100C2AAAC /* README.md */,
+				DCB131212E78B52B00C2AAAC /* sshpass */,
 				DC7A59812E787A8700599FEF /* RSYNC-GUI */,
 				DC7A59802E787A8700599FEF /* Products */,
 			);
@@ -109,6 +118,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DCB131242E78B71100C2AAAC /* README.md in Resources */,
+				DCB131222E78B52B00C2AAAC /* sshpass in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -258,11 +269,14 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "RSYNC-GUI";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.freqrider.RSYNC-GUI";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -285,11 +299,14 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "RSYNC-GUI";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.freqrider.RSYNC-GUI";
 				PRODUCT_NAME = "$(TARGET_NAME)";
