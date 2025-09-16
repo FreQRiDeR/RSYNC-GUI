@@ -9,24 +9,12 @@
 /* Begin PBXFileReference section */
 		DC7A597F2E787A8700599FEF /* RSYNC-GUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "RSYNC-GUI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		DCB131232E78B71100C2AAAC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
+		DCD18E512E790CF4006AE51E /* RSYNC-GUI.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "RSYNC-GUI.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		DC9793952E78BA290051509E /* Exceptions for "RSYNC-GUI" folder in "RSYNC-GUI" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"RSYNC-GUI.png",
-			);
-			target = DC7A597E2E787A8700599FEF /* RSYNC-GUI */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		DC7A59812E787A8700599FEF /* RSYNC-GUI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				DC9793952E78BA290051509E /* Exceptions for "RSYNC-GUI" folder in "RSYNC-GUI" target */,
-			);
 			path = "RSYNC-GUI";
 			sourceTree = "<group>";
 		};
@@ -49,6 +37,7 @@
 				DCB131232E78B71100C2AAAC /* README.md */,
 				DC7A59812E787A8700599FEF /* RSYNC-GUI */,
 				DC7A59802E787A8700599FEF /* Products */,
+				DCD18E512E790CF4006AE51E /* RSYNC-GUI.png */,
 			);
 			sourceTree = "<group>";
 		};
