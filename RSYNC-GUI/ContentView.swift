@@ -48,6 +48,9 @@ struct ContentView: View {
     // Copy folder contents vs folder itself
     @State private var copyContents = false
 
+    // Rsync manager
+    @StateObject private var rsyncManager = RsyncManager()
+
     // Convenience computed properties
     var sourceProvided: Bool {
         if sourceIsRemote {
@@ -93,8 +96,11 @@ struct ContentView: View {
                 sshOptions.append("-i \"\(targetSSHKeyPath)\"")
             }
             
-            // Use SSH agent if no password is specified (for passphrase-protected keys)
-            if !sourceUsePassword && !targetUsePassword {
+            // Authentication preferences
+            if sourceUsePassword || targetUsePassword {
+                sshOptions.append("-oPasswordAuthentication=yes")
+                sshOptions.append("-oPubkeyAuthentication=no")
+            } else {
                 sshOptions.append("-oPreferredAuthentications=publickey")
             }
             
@@ -137,7 +143,6 @@ struct ContentView: View {
 
     // Execution
     @State private var outputLog: String = ""
-    @State private var isRunning = false
 
     var body: some View {
         NavigationView {
@@ -267,19 +272,19 @@ struct ContentView: View {
 
                 HStack(spacing: 12) {
                     Button(action: runRsync) {
-                        Label(isRunning ? "Running..." : "Run rsync", systemImage: "play.fill")
+                        Label(rsyncManager.isRunning ? "Running..." : "Run rsync", systemImage: "play.fill")
                     }
-                    .disabled(isRunning || (!sourceProvided) || (!targetProvided))
+                    .disabled(rsyncManager.isRunning || (!sourceProvided) || (!targetProvided))
 
                     Button(action: stopRsync) {
                         Label("Stop", systemImage: "stop.fill")
                     }
-                    .disabled(!isRunning)
+                    .disabled(!rsyncManager.isRunning)
 
                     Spacer()
 
-                    Text(isRunning ? "Running" : "Ready")
-                        .foregroundColor(isRunning ? .accentColor : .secondary)
+                    Text(rsyncManager.isRunning ? "Running" : "Ready")
+                        .foregroundColor(rsyncManager.isRunning ? .accentColor : .secondary)
                 }
 
                 GroupBox("Output") {
@@ -360,116 +365,92 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Running rsync
-    @State private var currentProcess: Process? = nil
-
+    // MARK: - Running rsync with native SSH implementation
     func runRsync() {
         outputLog = ""
-        isRunning = true
-
-
-        let cmdPreview = commandPreview
-        appendOutput("$ \(cmdPreview)\n")
-
-        // Password authentication is now supported via bundled sshpass
-
-        // Check if we need to use sshpass for password authentication
-        let needsSSHPass = (sourceIsRemote && sourceUsePassword && !sourcePassword.isEmpty) || 
-                          (targetIsRemote && targetUsePassword && !targetPassword.isEmpty)
         
-        let process = Process()
-        currentProcess = process
+        // Build configuration
+        var options: [String] = []
+        if optArchive { options.append("-a") }
+        if optVerbose { options.append("-v") }
+        if optHumanReadable { options.append("-h") }
+        if optProgress { options.append("--progress") }
+        if optDelete { options.append("--delete") }
+        if optDryRun { options.append("--dry-run") }
         
-        if needsSSHPass {
-            // Use sshpass with rsync
-            // Get the bundled sshpass path
-            guard let sshpassPath = Bundle.main.path(forResource: "sshpass", ofType: nil) else {
-                appendOutput("Error: sshpass binary not found in app bundle. Please ensure sshpass is added to the project.\n")
-                isRunning = false
-                return
-            }
-            
-            // Build sshpass command with rsync
-            var sshpassArgs: [String] = []
-            
-            // Determine which password to use
-            let password = sourceIsRemote && sourceUsePassword ? sourcePassword : targetPassword
-            
-            sshpassArgs.append("-p")
-            sshpassArgs.append(password)
-            sshpassArgs.append("rsync")
-            
-            // Parse rsync arguments from the preview
-            let components = cmdPreview.components(separatedBy: " ")
-            for i in 1..<components.count {
-                let arg = components[i]
-                // Remove quotes from arguments
-                if arg.hasPrefix("\"") && arg.hasSuffix("\"") {
-                    sshpassArgs.append(String(arg.dropFirst().dropLast()))
-                } else {
-                    sshpassArgs.append(arg)
-                }
-            }
-            
-            process.launchPath = sshpassPath
-            process.arguments = sshpassArgs
+        // Determine source and destination
+        var source = sourceIsRemote ? remoteSource : localSource
+        var destination = targetIsRemote ? remoteTarget : localTarget
+        
+        // Handle copy contents option
+        if copyContents && !source.isEmpty && !source.hasSuffix("/") {
+            source += "/"
+        }
+        
+        // Normalize remote paths
+        if sourceIsRemote {
+            source = normalizeRemotePath(source)
+        }
+        if targetIsRemote {
+            destination = normalizeRemotePath(destination)
+        }
+        
+        // Determine password usage
+        let usePassword: Bool
+        let password: String?
+        let keyPath: String?
+        
+        if sourceIsRemote && sourceUsePassword {
+            usePassword = true
+            password = sourcePassword.isEmpty ? nil : sourcePassword
+            keyPath = sourceUseSSHKey ? sourceSSHKeyPath : nil
+        } else if targetIsRemote && targetUsePassword {
+            usePassword = true
+            password = targetPassword.isEmpty ? nil : targetPassword
+            keyPath = targetUseSSHKey ? targetSSHKeyPath : nil
         } else {
-            // Use rsync directly (no password needed)
-            process.launchPath = "/usr/bin/rsync"
-            
-            // Parse command arguments from the preview
-            var args: [String] = []
-            let components = cmdPreview.components(separatedBy: " ")
-            // Skip the first component (rsync) and add the rest as arguments
-            for i in 1..<components.count {
-                let arg = components[i]
-                // Remove quotes from arguments
-                if arg.hasPrefix("\"") && arg.hasSuffix("\"") {
-                    args.append(String(arg.dropFirst().dropLast()))
-                } else {
-                    args.append(arg)
-                }
-            }
-            process.arguments = args
+            usePassword = false
+            password = nil
+            keyPath = (sourceIsRemote && sourceUseSSHKey) ? sourceSSHKeyPath :
+                     (targetIsRemote && targetUseSSHKey) ? targetSSHKeyPath : nil
         }
-
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = errPipe
-
-        outPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.count > 0, let s = String(data: data, encoding: .utf8) {
-                DispatchQueue.main.async { appendOutput(s) }
-            }
-        }
-
-        errPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.count > 0, let s = String(data: data, encoding: .utf8) {
-                DispatchQueue.main.async { appendOutput(s) }
-            }
-        }
-
-        process.terminationHandler = { p in
+        
+        let config = RsyncManager.RsyncConfig(
+            source: source,
+            destination: destination,
+            options: options,
+            usePassword: usePassword,
+            password: password,
+            sshKeyPath: keyPath
+        )
+        
+        // Fixed: Removed [weak self] since ContentView is a struct
+        rsyncManager.executeRsync(config: config) { output in
             DispatchQueue.main.async {
-                isRunning = false
-                appendOutput("\nProcess exited with code \(p.terminationStatus)\n")
+                self.appendOutput(output)
             }
         }
-
-        do { try process.run() } catch { appendOutput("Failed to run: \(error.localizedDescription)\n"); isRunning = false }
     }
 
     func stopRsync() {
-        currentProcess?.terminate()
-        isRunning = false
+        rsyncManager.stopRsync()
         appendOutput("\nUser terminated process\n")
     }
 
     func appendOutput(_ s: String) {
         outputLog += s
+    }
+    
+    private func normalizeRemotePath(_ path: String) -> String {
+        guard path.contains("@"), !path.contains(":") else { return path }
+        
+        if let slashIndex = path.firstIndex(of: "/") {
+            let hostPart = String(path[..<slashIndex])
+            let pathPart = String(path[slashIndex...])
+            return hostPart + ":" + pathPart
+        } else {
+            return path + ":"
+        }
     }
 }
 
@@ -583,140 +564,111 @@ struct RemoteBrowserView: View {
         guard !host.isEmpty else { errorMessage = "Please enter user@host"; return }
         errorMessage = ""
         loading = true
-        // Build ssh command (avoid writing known_hosts inside sandbox)
-        let cmd = "/usr/bin/ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null \(host) ls -la \"\(path)\""
-
+        
+        // Use native SSH connection for remote browsing
         if let pw = password, !pw.isEmpty {
-            // Use bundled sshpass for password authentication
-            guard let sshpassPath = Bundle.main.path(forResource: "sshpass", ofType: nil) else {
-                errorMessage = "Error: sshpass binary not found in app bundle. Please ensure sshpass is added to the project."
-                loading = false
-                entries = []
-                return
-            }
-            
+            // Use PTY-based SSH for password authentication
+            let sshManager = SSHConnectionManager()
+            let command = "/usr/bin/ssh"
             let escapedPath = path.replacingOccurrences(of: "\"", with: "\\\"")
-            let cmd = "\(sshpassPath) -p \"\(pw)\" /usr/bin/ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null \(host) ls -la \"\(escapedPath)\""
+            let arguments = [
+                "-oStrictHostKeyChecking=no",
+                "-oUserKnownHostsFile=/dev/null",
+                "-oGlobalKnownHostsFile=/dev/null",
+                "-oPasswordAuthentication=yes",
+                "-oPubkeyAuthentication=no",
+                host,
+                "ls", "-la", escapedPath
+            ]
             
-            let process = Process()
-            process.launchPath = "/bin/bash"
-            process.arguments = ["-lc", cmd]
-            let outPipe = Pipe()
-            let errPipe = Pipe()
-            process.standardOutput = outPipe
-            process.standardError = errPipe
-
-            do {
-                try process.run()
-            } catch {
-                errorMessage = "Failed to run sshpass: \(error.localizedDescription)"
-                loading = false
-                return
-            }
-
-            DispatchQueue.global(qos: .userInitiated).async {
-                let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-                let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-                let out = String(data: outData, encoding: .utf8) ?? ""
-                let err = String(data: errData, encoding: .utf8) ?? ""
-
+            var capturedOutput = ""
+            sshManager.executeRsyncWithPassword(
+                command: command,
+                arguments: arguments,
+                password: password,
+                outputHandler: { output in
+                    capturedOutput += output
+                }
+            ) { result in
                 DispatchQueue.main.async {
-                    loading = false
-                    if !err.isEmpty {
-                        errorMessage = err.trimmingCharacters(in: .whitespacesAndNewlines)
-                        entries = []
-                        return
+                    self.loading = false
+                    switch result {
+                    case .success(_):
+                        self.parseDirectoryListing(capturedOutput)
+                    case .failure(let error):
+                        self.errorMessage = error.localizedDescription
+                        self.entries = []
                     }
-
-                    // parse ls -la output lines
-                    var parsed: [RemoteEntry] = []
-                    let lines = out.split(separator: "\n")
-                    for line in lines {
-                        let trimmed = line.trimmingCharacters(in: .whitespaces)
-                        if trimmed.isEmpty { continue }
-                        if trimmed.hasPrefix("total") { continue }
-                        let comps = trimmed.split(separator: " ", omittingEmptySubsequences: true)
-                        if comps.count < 9 { continue }
-                        let perm = String(comps[0])
-                        let name = comps.dropFirst(8).joined(separator: " ")
-                        let isDir = perm.first == "d"
-                        parsed.append(RemoteEntry(name: name, isDirectory: isDir))
-                    }
-
-                    parsed.sort { (a, b) in
-                        if a.isDirectory == b.isDirectory { return a.name.lowercased() < b.name.lowercased() }
-                        return a.isDirectory && !b.isDirectory
-                    }
-
-                    entries = parsed
                 }
             }
         } else {
-            // No password: run standard non-interactive ssh
-            let process = Process()
-            process.launchPath = "/bin/bash"
-            process.arguments = ["-lc", cmd]
+            // Use standard SSH for key-based authentication
+            executeStandardSSH()
+        }
+    }
+    
+    private func executeStandardSSH() {
+        let cmd = "/usr/bin/ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null \(host) ls -la \"\(path)\""
+        
+        let process = Process()
+        process.launchPath = "/bin/bash"
+        process.arguments = ["-lc", cmd]
 
-            let outPipe = Pipe()
-            let errPipe = Pipe()
-            process.standardOutput = outPipe
-            process.standardError = errPipe
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
 
-            do {
-                try process.run()
-            } catch {
-                errorMessage = "Failed to run ssh: \(error.localizedDescription)"
-                loading = false
-                return
-            }
+        do {
+            try process.run()
+        } catch {
+            errorMessage = "Failed to run ssh: \(error.localizedDescription)"
+            loading = false
+            return
+        }
 
-            DispatchQueue.global(qos: .userInitiated).async {
-                let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-                let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-                let out = String(data: outData, encoding: .utf8) ?? ""
-                let err = String(data: errData, encoding: .utf8) ?? ""
+        DispatchQueue.global(qos: .userInitiated).async {
+            let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            let out = String(data: outData, encoding: .utf8) ?? ""
+            let err = String(data: errData, encoding: .utf8) ?? ""
 
-                DispatchQueue.main.async {
-                    loading = false
-                    if !err.isEmpty {
-                        errorMessage = err.trimmingCharacters(in: .whitespacesAndNewlines)
-                        entries = []
-                        return
-                    }
-
-                    // parse ls -la output lines
-                    var parsed: [RemoteEntry] = []
-                    let lines = out.split(separator: "\n")
-                    for line in lines {
-                        let trimmed = line.trimmingCharacters(in: .whitespaces)
-                        if trimmed.isEmpty { continue }
-                        if trimmed.hasPrefix("total") { continue }
-                        let comps = trimmed.split(separator: " ", omittingEmptySubsequences: true)
-                        if comps.count < 9 { continue }
-                        let perm = String(comps[0])
-                        let name = comps.dropFirst(8).joined(separator: " ")
-                        let isDir = perm.first == "d"
-                        parsed.append(RemoteEntry(name: name, isDirectory: isDir))
-                    }
-
-                    parsed.sort { (a, b) in
-                        if a.isDirectory == b.isDirectory { return a.name.lowercased() < b.name.lowercased() }
-                        return a.isDirectory && !b.isDirectory
-                    }
-
-                    entries = parsed
+            DispatchQueue.main.async {
+                self.loading = false
+                if !err.isEmpty {
+                    self.errorMessage = err.trimmingCharacters(in: .whitespacesAndNewlines)
+                    self.entries = []
+                    return
                 }
+                
+                self.parseDirectoryListing(out)
             }
+        }
     }
-    }
+    
+    private func parseDirectoryListing(_ output: String) {
+        var parsed: [RemoteEntry] = []
+        let lines = output.split(separator: "\n")
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            if trimmed.hasPrefix("total") { continue }
+            let comps = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+            if comps.count < 9 { continue }
+            let perm = String(comps[0])
+            let name = comps.dropFirst(8).joined(separator: " ")
+            let isDir = perm.first == "d"
+            parsed.append(RemoteEntry(name: name, isDirectory: isDir))
+        }
 
-    // NOTE: PTY-based interactive password handling was removed. To support password-based non-interactive auth
-    // either install sshpass (Homebrew) or use key-based SSH authentication. Implementing a fully self-contained
-    // SSH client requires integrating an SSH/SFTP library (NMSSH/libssh2) which I can add if you want a native solution.
+        parsed.sort { (a, b) in
+            if a.isDirectory == b.isDirectory { return a.name.lowercased() < b.name.lowercased() }
+            return a.isDirectory && !b.isDirectory
+        }
+
+        entries = parsed
+    }
 }
-
-
-
 
 #if DEBUG
 struct ContentView_Previews: PreviewProvider {

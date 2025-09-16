@@ -6,13 +6,8 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		DCB131222E78B52B00C2AAAC /* sshpass in Resources */ = {isa = PBXBuildFile; fileRef = DCB131212E78B52B00C2AAAC /* sshpass */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		DC7A597F2E787A8700599FEF /* RSYNC-GUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "RSYNC-GUI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		DCB131212E78B52B00C2AAAC /* sshpass */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = sshpass; sourceTree = "<group>"; };
 		DCB131232E78B71100C2AAAC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -52,7 +47,6 @@
 			isa = PBXGroup;
 			children = (
 				DCB131232E78B71100C2AAAC /* README.md */,
-				DCB131212E78B52B00C2AAAC /* sshpass */,
 				DC7A59812E787A8700599FEF /* RSYNC-GUI */,
 				DC7A59802E787A8700599FEF /* Products */,
 			);
@@ -130,7 +124,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				DCB131222E78B52B00C2AAAC /* sshpass in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
