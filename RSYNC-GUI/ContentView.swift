@@ -145,8 +145,7 @@ struct ContentView: View {
     @State private var outputLog: String = ""
 
     var body: some View {
-        NavigationView {
-            VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
                 GroupBox("Source") {
                     HStack {
                         Toggle(isOn: $sourceIsRemote) {
@@ -309,7 +308,6 @@ struct ContentView: View {
                     remoteTarget = selection
                 }
             }
-        }
         .frame(minWidth: 800, minHeight: 700)
     }
 
@@ -365,7 +363,7 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Running rsync with native SSH implementation
+    // MARK: - Running rsync with AppleScript implementation
     func runRsync() {
         outputLog = ""
         
@@ -424,11 +422,9 @@ struct ContentView: View {
             sshKeyPath: keyPath
         )
         
-        // Fixed: Removed [weak self] since ContentView is a struct
+        // FIXED: Removed [weak self] and DispatchQueue wrapper
         rsyncManager.executeRsync(config: config) { output in
-            DispatchQueue.main.async {
-                self.appendOutput(output)
-            }
+            appendOutput(output)
         }
     }
 
@@ -560,88 +556,63 @@ struct RemoteBrowserView: View {
         .onAppear { if !host.isEmpty { listDirectory() } }
     }
 
+    // FIXED: Replaced with AppleScript implementation
     func listDirectory() {
         guard !host.isEmpty else { errorMessage = "Please enter user@host"; return }
         errorMessage = ""
         loading = true
         
-        // Use native SSH connection for remote browsing
+        // Use AppleScript for SSH directory listing
+        let escapedPath = path.replacingOccurrences(of: "'", with: "'\"'\"'")
+        
         if let pw = password, !pw.isEmpty {
-            // Use PTY-based SSH for password authentication
-            let sshManager = SSHConnectionManager()
-            let command = "/usr/bin/ssh"
-            let escapedPath = path.replacingOccurrences(of: "\"", with: "\\\"")
-            let arguments = [
-                "-oStrictHostKeyChecking=no",
-                "-oUserKnownHostsFile=/dev/null",
-                "-oGlobalKnownHostsFile=/dev/null",
-                "-oPasswordAuthentication=yes",
-                "-oPubkeyAuthentication=no",
-                host,
-                "ls", "-la", escapedPath
-            ]
-            
-            var capturedOutput = ""
-            sshManager.executeRsyncWithPassword(
-                command: command,
-                arguments: arguments,
-                password: password,
-                outputHandler: { output in
-                    capturedOutput += output
-                }
-            ) { result in
-                DispatchQueue.main.async {
-                    self.loading = false
-                    switch result {
-                    case .success(_):
-                        self.parseDirectoryListing(capturedOutput)
-                    case .failure(let error):
-                        self.errorMessage = error.localizedDescription
-                        self.entries = []
-                    }
-                }
+            // Use expect for password authentication
+            let escapedPassword = pw.replacingOccurrences(of: "'", with: "'\"'\"'")
+            let expectCommand = """
+            expect -c "
+            spawn ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null -oPasswordAuthentication=yes -oPubkeyAuthentication=no \(host) ls -la '\(escapedPath)'
+            expect {
+                -re \\".*assword.*:\\" { send \\"\(escapedPassword)\\\\r\\"; exp_continue }
+                -re \\".*yes/no.*\\" { send \\"yes\\\\r\\"; exp_continue }
+                eof { exit }
+                timeout { exit 1 }
             }
+            "
+            """
+            executeAppleScriptCommand(expectCommand)
         } else {
             // Use standard SSH for key-based authentication
-            executeStandardSSH()
+            let command = "ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null \(host) ls -la '\(escapedPath)'"
+            executeAppleScriptCommand(command)
         }
     }
     
-    private func executeStandardSSH() {
-        let cmd = "/usr/bin/ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null \(host) ls -la \"\(path)\""
+    private func executeAppleScriptCommand(_ command: String) {
+        let escapedCommand = command.replacingOccurrences(of: "\\", with: "\\\\")
+                                   .replacingOccurrences(of: "\"", with: "\\\"")
         
-        let process = Process()
-        process.launchPath = "/bin/bash"
-        process.arguments = ["-lc", cmd]
-
-        let outPipe = Pipe()
-        let errPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = errPipe
-
-        do {
-            try process.run()
-        } catch {
-            errorMessage = "Failed to run ssh: \(error.localizedDescription)"
-            loading = false
-            return
-        }
-
+        let appleScript = """
+        do shell script "\(escapedCommand)"
+        """
+        
         DispatchQueue.global(qos: .userInitiated).async {
-            let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-            let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
-            let out = String(data: outData, encoding: .utf8) ?? ""
-            let err = String(data: errData, encoding: .utf8) ?? ""
-
+            let script = NSAppleScript(source: appleScript)
+            var errorDict: NSDictionary?
+            let result = script?.executeAndReturnError(&errorDict)
+            
             DispatchQueue.main.async {
                 self.loading = false
-                if !err.isEmpty {
-                    self.errorMessage = err.trimmingCharacters(in: .whitespacesAndNewlines)
-                    self.entries = []
-                    return
-                }
                 
-                self.parseDirectoryListing(out)
+                if let error = errorDict {
+                    let errorMessage = error["NSAppleScriptErrorMessage"] as? String ?? "Unknown error"
+                    self.errorMessage = errorMessage
+                    self.entries = []
+                } else if let output = result?.stringValue {
+                    self.parseDirectoryListing(output)
+                } else {
+                    self.errorMessage = "No output received"
+                    self.entries = []
+                }
             }
         }
     }

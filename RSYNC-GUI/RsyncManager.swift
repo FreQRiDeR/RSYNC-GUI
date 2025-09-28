@@ -2,142 +2,14 @@
 //  RsyncManager.swift
 //  RSYNC-GUI
 //
-//  Native SSH implementation for password authentication
+//  AppleScript-based implementation to bypass sandboxing
 //
 
 import Foundation
-import Darwin
+import AppKit
 
-// MARK: - SSH Connection Manager
-class SSHConnectionManager: ObservableObject {
-    
-    enum SSHError: Error, LocalizedError {
-        case connectionFailed(String)
-        case authenticationFailed
-        case commandExecutionFailed(String)
-        case invalidHost
-        
-        var errorDescription: String? {
-            switch self {
-            case .connectionFailed(let message):
-                return "Connection failed: \(message)"
-            case .authenticationFailed:
-                return "Authentication failed. Check your credentials."
-            case .commandExecutionFailed(let message):
-                return "Command execution failed: \(message)"
-            case .invalidHost:
-                return "Invalid host format. Use user@hostname"
-            }
-        }
-    }
-    
-    // Execute rsync with password authentication via expect-like PTY handling
-    func executeRsyncWithPassword(
-        command: String,
-        arguments: [String],
-        password: String?,
-        outputHandler: @escaping (String) -> Void,
-        completionHandler: @escaping (Result<Int, SSHError>) -> Void
-    ) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            
-            // Create pseudo-terminal pair
-            var masterFD: Int32 = -1
-            var slaveFD: Int32 = -1
-            
-            guard openpty(&masterFD, &slaveFD, nil, nil, nil) == 0 else {
-                DispatchQueue.main.async {
-                    completionHandler(.failure(.connectionFailed("Failed to create PTY")))
-                }
-                return
-            }
-            
-            defer {
-                close(masterFD)
-                close(slaveFD)
-            }
-            
-            let process = Process()
-            process.launchPath = command
-            process.arguments = arguments
-            
-            // Redirect stdin/stdout/stderr to slave PTY
-            let slaveHandle = FileHandle(fileDescriptor: slaveFD, closeOnDealloc: false)
-            process.standardInput = slaveHandle
-            process.standardOutput = slaveHandle
-            process.standardError = slaveHandle
-            
-            // Start monitoring master PTY for output and password prompts
-            let masterHandle = FileHandle(fileDescriptor: masterFD, closeOnDealloc: false)
-            var passwordSent = false
-            
-            // Background queue for reading PTY output
-            let readQueue = DispatchQueue(label: "pty-reader", qos: .userInitiated)
-            let readSource = DispatchSource.makeReadSource(fileDescriptor: masterFD, queue: readQueue)
-            
-            readSource.setEventHandler {
-                let data = masterHandle.availableData
-                if data.count > 0 {
-                    
-                    if let output = String(data: data, encoding: .utf8) {
-                        DispatchQueue.main.async {
-                            outputHandler(output)
-                        }
-                        
-                        // Check for password prompt
-                        if !passwordSent,
-                           let password = password,
-                           !password.isEmpty,
-                           (output.lowercased().contains("password:") ||
-                            output.lowercased().contains("password for") ||
-                            output.contains("'s password:")) {
-                            
-                            passwordSent = true
-                            // Send password followed by newline
-                            let passwordData = "\(password)\n".data(using: .utf8)!
-                            masterHandle.write(passwordData)
-                        }
-                    }
-                }
-            }
-            
-            readSource.setCancelHandler {
-                close(masterFD)
-            }
-            
-            process.terminationHandler = { process in
-                readSource.cancel()
-                DispatchQueue.main.async {
-                    let exitCode = Int(process.terminationStatus)
-                    if exitCode == 0 {
-                        completionHandler(.success(exitCode))
-                    } else {
-                        completionHandler(.failure(.commandExecutionFailed("Process exited with code \(exitCode)")))
-                    }
-                }
-            }
-            
-            readSource.resume()
-            
-            do {
-                try process.run()
-            } catch {
-                readSource.cancel()
-                DispatchQueue.main.async {
-                    completionHandler(.failure(.connectionFailed(error.localizedDescription)))
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Enhanced Rsync Manager
 class RsyncManager: ObservableObject {
     @Published var isRunning = false
-    @Published var output = ""
-    
-    private var currentProcess: Process?
-    private let sshManager = SSHConnectionManager()
     
     struct RsyncConfig {
         let source: String
@@ -152,90 +24,18 @@ class RsyncManager: ObservableObject {
         guard !isRunning else { return }
         
         isRunning = true
-        output = ""
         
-        let arguments = self.buildRsyncArguments(config: config)
-        let command = "/usr/bin/rsync"
+        let command = buildRsyncCommand(config: config)
+        outputHandler("$ \(command)\n")
         
-        // Log the command for debugging (without password)
-        let safeCommand = "\(command) \(arguments.joined(separator: " "))"
-        outputHandler("$ \(safeCommand)\n")
-        
-        if config.usePassword && config.password != nil && !config.password!.isEmpty {
-            // Use PTY-based password handling
-            sshManager.executeRsyncWithPassword(
-                command: command,
-                arguments: arguments,
-                password: config.password,
-                outputHandler: outputHandler
-            ) { [weak self] result in
-                DispatchQueue.main.async {
-                    self?.isRunning = false
-                    switch result {
-                    case .success(let exitCode):
-                        outputHandler("\nProcess completed with exit code \(exitCode)\n")
-                    case .failure(let error):
-                        outputHandler("\nError: \(error.localizedDescription)\n")
-                    }
-                }
-            }
-        } else {
-            // Standard execution without password
-            executeStandardRsync(command: command, arguments: arguments, outputHandler: outputHandler)
-        }
+        executeViaAppleScript(command: command, password: config.password, outputHandler: outputHandler)
     }
     
-    private func executeStandardRsync(command: String, arguments: [String], outputHandler: @escaping (String) -> Void) {
-        let process = Process()
-        currentProcess = process
-        
-        process.launchPath = command
-        process.arguments = arguments
-        
-        let outputPipe = Pipe()
-        let errorPipe = Pipe()
-        process.standardOutput = outputPipe
-        process.standardError = errorPipe
-        
-        outputPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.count > 0, let output = String(data: data, encoding: .utf8) {
-                DispatchQueue.main.async {
-                    outputHandler(output)
-                }
-            }
-        }
-        
-        errorPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if data.count > 0, let output = String(data: data, encoding: .utf8) {
-                DispatchQueue.main.async {
-                    outputHandler(output)
-                }
-            }
-        }
-        
-        process.terminationHandler = { [weak self] process in
-            DispatchQueue.main.async {
-                self?.isRunning = false
-                let exitCode = process.terminationStatus
-                outputHandler("\nProcess completed with exit code \(exitCode)\n")
-            }
-        }
-        
-        do {
-            try process.run()
-        } catch {
-            isRunning = false
-            outputHandler("Failed to start rsync: \(error.localizedDescription)\n")
-        }
-    }
-    
-    private func buildRsyncArguments(config: RsyncConfig) -> [String] {
-        var args: [String] = []
+    private func buildRsyncCommand(config: RsyncConfig) -> String {
+        var parts: [String] = ["rsync"]
         
         // Add options
-        args.append(contentsOf: config.options)
+        parts.append(contentsOf: config.options)
         
         // Configure SSH if needed
         if config.source.contains("@") || config.destination.contains("@") {
@@ -247,11 +47,10 @@ class RsyncManager: ObservableObject {
             
             // Add SSH key if specified
             if let keyPath = config.sshKeyPath, !keyPath.isEmpty {
-                sshOptions.append("-i")
-                sshOptions.append(keyPath)
+                sshOptions.append("-i \"\(keyPath)\"")
             }
             
-            // For password auth, we rely on PTY handling
+            // Authentication preferences
             if config.usePassword {
                 sshOptions.append("-oPasswordAuthentication=yes")
                 sshOptions.append("-oPubkeyAuthentication=no")
@@ -259,19 +58,82 @@ class RsyncManager: ObservableObject {
                 sshOptions.append("-oPreferredAuthentications=publickey")
             }
             
-            args.append("-e")
-            args.append("ssh " + sshOptions.joined(separator: " "))
+            let sshCommand = "ssh " + sshOptions.joined(separator: " ")
+            parts.append("-e \"\(sshCommand)\"")
         }
         
-        // Add source and destination
-        args.append(config.source)
-        args.append(config.destination)
+        // Add source and destination (properly escaped)
+        parts.append(escapeShellArgument(config.source))
+        parts.append(escapeShellArgument(config.destination))
         
-        return args
+        return parts.joined(separator: " ")
+    }
+    
+    private func executeViaAppleScript(command: String, password: String?, outputHandler: @escaping (String) -> Void) {
+        var fullCommand = command
+        
+        // If password is provided, use expect for automation
+        if let pwd = password, !pwd.isEmpty {
+            let escapedPassword = pwd.replacingOccurrences(of: "'", with: "'\"'\"'")
+            let escapedCommand = command.replacingOccurrences(of: "'", with: "'\"'\"'")
+            
+            fullCommand = """
+            expect -c "
+            spawn sh -c '\(escapedCommand)'
+            expect {
+                -re \\".*assword.*:\\" { send \\"\(escapedPassword)\\\\r\\"; exp_continue }
+                -re \\".*yes/no.*\\" { send \\"yes\\\\r\\"; exp_continue }
+                eof { exit }
+                timeout { exit 1 }
+            }
+            "
+            """
+        }
+        
+        // Escape the command for AppleScript
+        let escapedForAppleScript = fullCommand.replacingOccurrences(of: "\\", with: "\\\\")
+                                                .replacingOccurrences(of: "\"", with: "\\\"")
+        
+        let appleScript = """
+        do shell script "\(escapedForAppleScript)"
+        """
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let script = NSAppleScript(source: appleScript)
+            var errorDict: NSDictionary?
+            
+            let result = script?.executeAndReturnError(&errorDict)
+            
+            DispatchQueue.main.async {
+                self.isRunning = false
+                
+                if let error = errorDict {
+                    let errorMessage = error["NSAppleScriptErrorMessage"] as? String ?? "Unknown error"
+                    outputHandler("Error: \(errorMessage)\n")
+                } else {
+                    // AppleScript do shell script captures stdout
+                    if let output = result?.stringValue, !output.isEmpty {
+                        outputHandler(output)
+                    }
+                    outputHandler("\nCommand completed successfully\n")
+                }
+            }
+        }
+    }
+    
+    private func escapeShellArgument(_ argument: String) -> String {
+        // Escape special characters for shell execution
+        let escaped = argument.replacingOccurrences(of: "'", with: "'\"'\"'")
+        return "'\(escaped)'"
     }
     
     func stopRsync() {
-        currentProcess?.terminate()
         isRunning = false
+        
+        // Try to kill any running rsync processes
+        let killScript = "do shell script \"pkill -f rsync\" with administrator privileges"
+        let script = NSAppleScript(source: killScript)
+        var errorDict: NSDictionary?
+        script?.executeAndReturnError(&errorDict)
     }
 }
