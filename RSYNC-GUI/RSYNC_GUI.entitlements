@@ -12,8 +12,9 @@
     <true/>
     <key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
     <array>
-        <string>/usr/bin/ssh</string>
         <string>/usr/bin/rsync</string>
+        <string>/usr/libexec/rsync/rsync.samba</string>
+        <string>/usr/bin/ssh</string>
         <string>/usr/bin/expect</string>
         <string>/bin/bash</string>
         <string>/bin/cat</string>

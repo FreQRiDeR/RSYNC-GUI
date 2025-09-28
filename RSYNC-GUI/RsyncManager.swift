@@ -29,11 +29,11 @@ class RsyncManager: ObservableObject {
         let command = buildRsyncCommand(config: config)
         outputHandler("$ \(command)\n")
         
-        executeViaAppleScript(command: command, password: config.password, outputHandler: outputHandler)
+        executeViaAppleScript(command: command, config: config, outputHandler: outputHandler)
     }
     
     private func buildRsyncCommand(config: RsyncConfig) -> String {
-        var parts: [String] = ["rsync"]
+        var parts: [String] = ["/usr/bin/rsync"]  // Use system rsync
         
         // Add options
         parts.append(contentsOf: config.options)
@@ -73,16 +73,33 @@ class RsyncManager: ObservableObject {
         return parts.joined(separator: " ")
     }
     
-    private func executeViaAppleScript(command: String, password: String?, outputHandler: @escaping (String) -> Void) {
+    private func executeViaAppleScript(command: String, config: RsyncConfig, outputHandler: @escaping (String) -> Void) {
         var fullCommand = command
         
-        // Determine if we need expect for automation (password OR SSH key passphrase)
-        let needsExpectAutomation = (password != nil && !password!.isEmpty)
-        
-        if needsExpectAutomation {
-            let escapedPassword = password!.replacingOccurrences(of: "\"", with: "\\\"")
+        // For SSH key authentication with passphrase, load key into SSH agent first
+        if let keyPath = config.sshKeyPath, !keyPath.isEmpty, let passphrase = config.sshKeyPassphrase, !passphrase.isEmpty {
+            // Use expect to load the key into SSH agent, then run rsync normally
+            fullCommand = """
+            # Load SSH key into agent with passphrase
+            expect << 'LOAD_KEY_EOF'
+            spawn ssh-add "\(keyPath)"
+            expect {
+                -re "Enter passphrase.*:" { send "\(passphrase.replacingOccurrences(of: "\"", with: "\\\""))\\r"; exp_continue }
+                -re "Identity added.*" { exit 0 }
+                eof { exit 0 }
+                timeout { exit 1 }
+            }
+            LOAD_KEY_EOF
             
-            // Create a temporary script file to avoid command parsing issues
+            # Now run rsync - SSH agent will handle authentication
+            \(command)
+            
+            # Clean up - remove key from agent
+            ssh-add -d "\(keyPath)" 2>/dev/null || true
+            """
+        } else if let pwd = config.password, !pwd.isEmpty {
+            // Regular password authentication
+            let escapedPassword = pwd.replacingOccurrences(of: "\"", with: "\\\"")
             let tempScriptPath = "/tmp/rsync_script_\(UUID().uuidString).sh"
             
             fullCommand = """
@@ -96,10 +113,8 @@ class RsyncManager: ObservableObject {
             spawn \(tempScriptPath)
             expect {
                 -re ".*assword.*:" { send "\(escapedPassword)\\r"; exp_continue }
-                -re ".*passphrase.*:" { send "\(escapedPassword)\\r"; exp_continue }
-                -re ".*Enter passphrase.*:" { send "\(escapedPassword)\\r"; exp_continue }
                 -re ".*yes/no.*" { send "yes\\r"; exp_continue }
-                eof
+                eof { exit 0 }
                 timeout { exit 1 }
             }
             EXPECT_EOF
@@ -107,6 +122,7 @@ class RsyncManager: ObservableObject {
             rm -f \(tempScriptPath)
             """
         }
+        // If no password/passphrase needed, run command directly
         
         // Escape the command for AppleScript
         let escapedForAppleScript = fullCommand.replacingOccurrences(of: "\\", with: "\\\\")
