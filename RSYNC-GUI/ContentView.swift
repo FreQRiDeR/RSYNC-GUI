@@ -15,7 +15,15 @@ struct ContentView: View {
     @State private var localSource: String = ""
     @State private var localTarget: String = ""
 
-    // Remote source/target (ssh user@host:path)
+    // Remote source/target components
+    @State private var sourceRemoteUser: String = ""
+    @State private var sourceRemoteHost: String = ""
+    @State private var sourceRemotePath: String = ""
+    @State private var targetRemoteUser: String = ""
+    @State private var targetRemoteHost: String = ""
+    @State private var targetRemotePath: String = ""
+    
+    // Legacy combined remote strings (for compatibility)
     @State private var remoteSource: String = ""
     @State private var remoteTarget: String = ""
     // Remote browser presentation
@@ -54,7 +62,8 @@ struct ContentView: View {
     // Convenience computed properties
     var sourceProvided: Bool {
         if sourceIsRemote {
-            return !remoteSource.trimmingCharacters(in: .whitespaces).isEmpty
+            return !sourceRemoteUser.trimmingCharacters(in: .whitespaces).isEmpty &&
+                   !sourceRemoteHost.trimmingCharacters(in: .whitespaces).isEmpty
         } else {
             return !localSource.trimmingCharacters(in: .whitespaces).isEmpty
         }
@@ -62,9 +71,27 @@ struct ContentView: View {
 
     var targetProvided: Bool {
         if targetIsRemote {
-            return !remoteTarget.trimmingCharacters(in: .whitespaces).isEmpty
+            return !targetRemoteUser.trimmingCharacters(in: .whitespaces).isEmpty &&
+                   !targetRemoteHost.trimmingCharacters(in: .whitespaces).isEmpty
         } else {
             return !localTarget.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+    }
+    
+    // Computed combined remote strings for rsync
+    var computedRemoteSource: String {
+        if sourceRemotePath.isEmpty {
+            return "\(sourceRemoteUser)@\(sourceRemoteHost):"
+        } else {
+            return "\(sourceRemoteUser)@\(sourceRemoteHost):\(sourceRemotePath)"
+        }
+    }
+    
+    var computedRemoteTarget: String {
+        if targetRemotePath.isEmpty {
+            return "\(targetRemoteUser)@\(targetRemoteHost):"
+        } else {
+            return "\(targetRemoteUser)@\(targetRemoteHost):\(targetRemotePath)"
         }
     }
 
@@ -156,30 +183,42 @@ struct ContentView: View {
                     }
 
                     if sourceIsRemote {
-                        HStack {
-                            TextField("user@host:/path/to/dir", text: $remoteSource)
-                                .textFieldStyle(.roundedBorder)
-                            Button(action: { showingRemoteBrowserForSource = true }) {
-                                Label("Browse", systemImage: "network")
-                            }
-                            .help("Open SFTP browser for the remote host (requires key-based auth or agent).")
-                        }
-                        if sourceUsePassword {
-                            SecureField("Remote password", text: $sourcePassword)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        Toggle("Use password for remote", isOn: $sourceUsePassword)
-                            .toggleStyle(.checkbox)
-                        
-                        Toggle("Use SSH key", isOn: $sourceUseSSHKey)
-                            .toggleStyle(.checkbox)
-                        
-                        if sourceUseSSHKey {
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                TextField("SSH key path (e.g., ~/.ssh/rsync_app_key)", text: $sourceSSHKeyPath)
+                                TextField("Username", text: $sourceRemoteUser)
                                     .textFieldStyle(.roundedBorder)
-                                Button(action: pickSSHKeyForSource) {
-                                    Label("Browse", systemImage: "key")
+                                    .frame(width: 120)
+                                TextField("Host/IP", text: $sourceRemoteHost)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 150)
+                                TextField("Remote path", text: $sourceRemotePath)
+                                    .textFieldStyle(.roundedBorder)
+                                Button(action: { showingRemoteBrowserForSource = true }) {
+                                    Label("Browse", systemImage: "network")
+                                }
+                                .help("Browse remote filesystem")
+                            }
+                            
+                            if sourceUsePassword {
+                                SecureField("Remote password", text: $sourcePassword)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            
+                            HStack {
+                                Toggle("Use password", isOn: $sourceUsePassword)
+                                    .toggleStyle(.checkbox)
+                                
+                                Toggle("Use SSH key", isOn: $sourceUseSSHKey)
+                                    .toggleStyle(.checkbox)
+                            }
+                            
+                            if sourceUseSSHKey {
+                                HStack {
+                                    TextField("SSH key path (e.g., ~/.ssh/rsync_app_key)", text: $sourceSSHKeyPath)
+                                        .textFieldStyle(.roundedBorder)
+                                    Button(action: pickSSHKeyForSource) {
+                                        Label("Browse", systemImage: "key")
+                                    }
                                 }
                             }
                         }
@@ -204,30 +243,42 @@ struct ContentView: View {
                     }
 
                     if targetIsRemote {
-                        HStack {
-                            TextField("user@host:/path/to/dir", text: $remoteTarget)
-                                .textFieldStyle(.roundedBorder)
-                            Button(action: { showingRemoteBrowserForTarget = true }) {
-                                Label("Browse", systemImage: "network")
-                            }
-                            .help("Open SFTP browser for the remote host (requires key-based auth or agent).")
-                        }
-                        if targetUsePassword {
-                            SecureField("Remote password", text: $targetPassword)
-                                .textFieldStyle(.roundedBorder)
-                        }
-                        Toggle("Use password for remote", isOn: $targetUsePassword)
-                            .toggleStyle(.checkbox)
-                        
-                        Toggle("Use SSH key", isOn: $targetUseSSHKey)
-                            .toggleStyle(.checkbox)
-                        
-                        if targetUseSSHKey {
+                        VStack(alignment: .leading, spacing: 8) {
                             HStack {
-                                TextField("SSH key path (e.g., ~/.ssh/rsync_app_key)", text: $targetSSHKeyPath)
+                                TextField("Username", text: $targetRemoteUser)
                                     .textFieldStyle(.roundedBorder)
-                                Button(action: pickSSHKeyForTarget) {
-                                    Label("Browse", systemImage: "key")
+                                    .frame(width: 120)
+                                TextField("Host/IP", text: $targetRemoteHost)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 150)
+                                TextField("Remote path", text: $targetRemotePath)
+                                    .textFieldStyle(.roundedBorder)
+                                Button(action: { showingRemoteBrowserForTarget = true }) {
+                                    Label("Browse", systemImage: "network")
+                                }
+                                .help("Browse remote filesystem")
+                            }
+                            
+                            if targetUsePassword {
+                                SecureField("Remote password", text: $targetPassword)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            
+                            HStack {
+                                Toggle("Use password", isOn: $targetUsePassword)
+                                    .toggleStyle(.checkbox)
+                                
+                                Toggle("Use SSH key", isOn: $targetUseSSHKey)
+                                    .toggleStyle(.checkbox)
+                            }
+                            
+                            if targetUseSSHKey {
+                                HStack {
+                                    TextField("SSH key path (e.g., ~/.ssh/rsync_app_key)", text: $targetSSHKeyPath)
+                                        .textFieldStyle(.roundedBorder)
+                                    Button(action: pickSSHKeyForTarget) {
+                                        Label("Browse", systemImage: "key")
+                                    }
                                 }
                             }
                         }
@@ -299,13 +350,31 @@ struct ContentView: View {
             .padding()
             .navigationTitle("RSYNC GUI")
             .sheet(isPresented: $showingRemoteBrowserForSource) {
-                RemoteBrowserView(initialRemote: remoteSource, password: sourceUsePassword ? sourcePassword : nil) { selection in
-                    remoteSource = selection
+                RemoteBrowserView(
+                    initialUser: sourceRemoteUser,
+                    initialHost: sourceRemoteHost,
+                    initialPath: sourceRemotePath,
+                    password: sourceUsePassword ? sourcePassword : nil,
+                    useSSHKey: sourceUseSSHKey,
+                    sshKeyPath: sourceSSHKeyPath
+                ) { user, host, path in
+                    sourceRemoteUser = user
+                    sourceRemoteHost = host
+                    sourceRemotePath = path
                 }
             }
             .sheet(isPresented: $showingRemoteBrowserForTarget) {
-                RemoteBrowserView(initialRemote: remoteTarget, password: targetUsePassword ? targetPassword : nil) { selection in
-                    remoteTarget = selection
+                RemoteBrowserView(
+                    initialUser: targetRemoteUser,
+                    initialHost: targetRemoteHost,
+                    initialPath: targetRemotePath,
+                    password: targetUsePassword ? targetPassword : nil,
+                    useSSHKey: targetUseSSHKey,
+                    sshKeyPath: targetSSHKeyPath
+                ) { user, host, path in
+                    targetRemoteUser = user
+                    targetRemoteHost = host
+                    targetRemotePath = path
                 }
             }
         .frame(minWidth: 800, minHeight: 700)
@@ -376,9 +445,9 @@ struct ContentView: View {
         if optDelete { options.append("--delete") }
         if optDryRun { options.append("--dry-run") }
         
-        // Determine source and destination
-        var source = sourceIsRemote ? remoteSource : localSource
-        var destination = targetIsRemote ? remoteTarget : localTarget
+        // Determine source and destination using computed values
+        var source = sourceIsRemote ? computedRemoteSource : localSource
+        var destination = targetIsRemote ? computedRemoteTarget : localTarget
         
         // Handle copy contents option
         if copyContents && !source.isEmpty && !source.hasSuffix("/") {
@@ -462,43 +531,52 @@ struct RemoteEntry: Identifiable {
 struct RemoteBrowserView: View {
     @Environment(\.presentationMode) var presentationMode
 
+    @State private var user: String
     @State private var host: String
     @State private var path: String
     let password: String?
+    let useSSHKey: Bool
+    let sshKeyPath: String?
     @State private var entries: [RemoteEntry] = []
     @State private var loading = false
     @State private var errorMessage: String = ""
 
-    let onSelect: (String) -> Void
+    let onSelect: (String, String, String) -> Void
 
-    init(initialRemote: String = "", password: String? = nil, onSelect: @escaping (String) -> Void) {
-        // parse initialRemote like user@host:/path
-        var parsedHost = ""
-        var parsedPath = "."
-        if let colonIndex = initialRemote.firstIndex(of: ":") {
-            parsedHost = String(initialRemote[..<colonIndex])
-            parsedPath = String(initialRemote[initialRemote.index(after: colonIndex)...])
-            if parsedPath.isEmpty { parsedPath = "." }
-        } else if !initialRemote.isEmpty {
-            parsedHost = initialRemote
-            parsedPath = "."
-        }
-        _host = State(initialValue: parsedHost)
-        _path = State(initialValue: parsedPath)
-        self.onSelect = onSelect
+    init(initialUser: String = "", initialHost: String = "", initialPath: String = "", password: String? = nil, useSSHKey: Bool = false, sshKeyPath: String? = nil, onSelect: @escaping (String, String, String) -> Void) {
+        _user = State(initialValue: initialUser)
+        _host = State(initialValue: initialHost)
+        _path = State(initialValue: initialPath.isEmpty ? "/" : initialPath)
         self.password = password
+        self.useSSHKey = useSSHKey
+        self.sshKeyPath = sshKeyPath
+        self.onSelect = onSelect
     }
 
     var body: some View {
         VStack(spacing: 12) {
             HStack {
-                TextField("user@host", text: $host)
+                TextField("Username", text: $user)
                     .textFieldStyle(.roundedBorder)
-                TextField("/remote/path", text: $path)
+                    .frame(width: 100)
+                TextField("Host/IP", text: $host)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 150)
+                TextField("Path", text: $path)
                     .textFieldStyle(.roundedBorder)
                 Button("Connect") { listDirectory() }
             }
             .padding()
+
+            if loading {
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Text("Connecting...")
+                        .foregroundColor(.secondary)
+                }
+                .padding()
+            }
 
             if !errorMessage.isEmpty {
                 Text(errorMessage)
@@ -506,72 +584,122 @@ struct RemoteBrowserView: View {
                     .padding([.leading, .trailing])
             }
 
-            List(entries) { entry in
-                HStack {
-                    Image(systemName: entry.isDirectory ? "folder" : "doc")
-                    Text(entry.name)
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    if entry.isDirectory {
-                        // navigate into directory
-                        if path.hasSuffix("/") {
-                            path += entry.name
-                        } else if path == "." || path == "~" {
-                            path = entry.name
-                        } else {
-                            path += "/\(entry.name)"
+            if !entries.isEmpty {
+                List(entries) { entry in
+                    HStack {
+                        Image(systemName: entry.isDirectory ? "folder.fill" : "doc.text")
+                            .foregroundColor(entry.isDirectory ? .blue : .primary)
+                        Text(entry.name)
+                        Spacer()
+                        if entry.isDirectory {
+                            Image(systemName: "chevron.right")
+                                .foregroundColor(.secondary)
+                                .font(.caption)
                         }
-                        listDirectory()
-                    } else {
-                        // select file
-                        let selection = "\(host):\(path.hasSuffix("/") ? path + entry.name : path + "/" + entry.name)"
-                        onSelect(selection)
-                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 2) {
+                        if entry.isDirectory {
+                            navigateToDirectory(entry.name)
+                        } else {
+                            selectFile(entry.name)
+                        }
                     }
                 }
+                .listStyle(.plain)
+            } else if !loading && errorMessage.isEmpty {
+                Text("No files found")
+                    .foregroundColor(.secondary)
+                    .padding()
             }
 
             HStack {
                 Button("Up") {
-                    // go up one directory
-                    if path == "." || path == "/" || path == "~" { path = "/" }
-                    else if let last = path.lastIndex(of: "/") {
-                        let newPath = String(path[..<last])
-                        path = newPath.isEmpty ? "/" : newPath
-                    }
-                    listDirectory()
+                    navigateUp()
                 }
+                .disabled(path == "/" || loading)
+                
                 Spacer()
+                
                 Button("Select Current") {
-                    let selection = "\(host):\(path)"
-                    onSelect(selection)
+                    onSelect(user, host, path)
                     presentationMode.wrappedValue.dismiss()
                 }
-                Button("Cancel") { presentationMode.wrappedValue.dismiss() }
+                .disabled(user.isEmpty || host.isEmpty || loading)
+                
+                Button("Cancel") {
+                    presentationMode.wrappedValue.dismiss()
+                }
             }
             .padding()
         }
         .frame(minWidth: 600, minHeight: 400)
-        .onAppear { if !host.isEmpty { listDirectory() } }
+        .onAppear {
+            if !user.isEmpty && !host.isEmpty && entries.isEmpty && !loading {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    listDirectory()
+                }
+            }
+        }
+    }
+    
+    private func navigateToDirectory(_ dirName: String) {
+        if dirName == ".." {
+            navigateUp()
+        } else if dirName != "." {
+            if path == "/" {
+                path = "/\(dirName)"
+            } else {
+                path = path.hasSuffix("/") ? "\(path)\(dirName)" : "\(path)/\(dirName)"
+            }
+            listDirectory()
+        }
+    }
+    
+    private func navigateUp() {
+        if path == "/" { return }
+        
+        let components = path.split(separator: "/")
+        if components.count > 1 {
+            path = "/" + components.dropLast().joined(separator: "/")
+        } else {
+            path = "/"
+        }
+        listDirectory()
+    }
+    
+    private func selectFile(_ fileName: String) {
+        let finalPath = path == "/" ? "/\(fileName)" : "\(path)/\(fileName)"
+        onSelect(user, host, finalPath)
+        presentationMode.wrappedValue.dismiss()
     }
 
     // FIXED: Replaced with AppleScript implementation
     func listDirectory() {
-        guard !host.isEmpty else { errorMessage = "Please enter user@host"; return }
+        guard !user.isEmpty && !host.isEmpty else {
+            errorMessage = "Please enter username and host"
+            return
+        }
+        
         errorMessage = ""
         loading = true
         
-        // Use AppleScript for SSH directory listing
+        let userHost = "\(user)@\(host)"
         let escapedPath = path.replacingOccurrences(of: "'", with: "'\"'\"'")
+        
+        var sshCommand = "ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null"
+        
+        // Add SSH key if specified
+        if useSSHKey, let keyPath = sshKeyPath, !keyPath.isEmpty {
+            sshCommand += " -i \"\(keyPath)\" -oPubkeyAuthentication=yes -oPasswordAuthentication=no"
+        }
         
         if let pw = password, !pw.isEmpty {
             // Use expect for password authentication
             let escapedPassword = pw.replacingOccurrences(of: "'", with: "'\"'\"'")
             let expectCommand = """
             expect -c "
-            spawn ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null -oPasswordAuthentication=yes -oPubkeyAuthentication=no \(host) ls -la '\(escapedPath)'
+            spawn \(sshCommand) \(userHost) ls -la '\(escapedPath)'
             expect {
                 -re \\".*assword.*:\\" { send \\"\(escapedPassword)\\\\r\\"; exp_continue }
                 -re \\".*yes/no.*\\" { send \\"yes\\\\r\\"; exp_continue }
@@ -582,13 +710,15 @@ struct RemoteBrowserView: View {
             """
             executeAppleScriptCommand(expectCommand)
         } else {
-            // Use standard SSH for key-based authentication
-            let command = "ssh -oStrictHostKeyChecking=no -oUserKnownHostsFile=/dev/null -oGlobalKnownHostsFile=/dev/null \(host) ls -la '\(escapedPath)'"
+            // Use standard SSH (with key if specified)
+            let command = "\(sshCommand) \(userHost) ls -la '\(escapedPath)'"
             executeAppleScriptCommand(command)
         }
     }
     
     private func executeAppleScriptCommand(_ command: String) {
+        print("Executing SSH command: \(command)")
+        
         let escapedCommand = command.replacingOccurrences(of: "\\", with: "\\\\")
                                    .replacingOccurrences(of: "\"", with: "\\\"")
         
@@ -605,13 +735,35 @@ struct RemoteBrowserView: View {
                 self.loading = false
                 
                 if let error = errorDict {
-                    let errorMessage = error["NSAppleScriptErrorMessage"] as? String ?? "Unknown error"
-                    self.errorMessage = errorMessage
+                    let errorMessage = (error["NSAppleScriptErrorMessage"] as? String) ?? "Connection failed"
+                    print("SSH Error: \(errorMessage)")
+                    
+                    // Check for common SSH errors and provide helpful messages
+                    if errorMessage.contains("Connection refused") {
+                        self.errorMessage = "Connection refused. Check if SSH is enabled on the remote host."
+                    } else if errorMessage.contains("Host key verification failed") {
+                        self.errorMessage = "Host key verification failed. The remote host's key may have changed."
+                    } else if errorMessage.contains("Permission denied") {
+                        self.errorMessage = "Permission denied. Check username, password, or SSH key."
+                    } else if errorMessage.contains("Name or service not known") {
+                        self.errorMessage = "Cannot resolve hostname. Check the host address."
+                    } else {
+                        self.errorMessage = errorMessage
+                    }
                     self.entries = []
                 } else if let output = result?.stringValue {
-                    self.parseDirectoryListing(output)
+                    print("SSH output received: \(output.count) characters")
+                    print("SSH output content: '\(output)'")
+                    
+                    if !output.isEmpty {
+                        self.parseDirectoryListing(output)
+                    } else {
+                        self.errorMessage = "Empty response from remote host"
+                        self.entries = []
+                    }
                 } else {
-                    self.errorMessage = "No output received"
+                    print("No result from AppleScript")
+                    self.errorMessage = "No output received from remote host"
                     self.entries = []
                 }
             }
@@ -620,24 +772,58 @@ struct RemoteBrowserView: View {
     
     private func parseDirectoryListing(_ output: String) {
         var parsed: [RemoteEntry] = []
-        let lines = output.split(separator: "\n")
-        for line in lines {
+        
+        // Debug: Print raw output to see what we're getting
+        print("Raw ls output: '\(output)'")
+        
+        let lines = output.split(separator: "\n", omittingEmptySubsequences: false)
+        for (index, line) in lines.enumerated() {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+            
+            // Debug: Print each line
+            print("Line \(index): '\(trimmed)'")
+            
             if trimmed.isEmpty { continue }
             if trimmed.hasPrefix("total") { continue }
-            let comps = trimmed.split(separator: " ", omittingEmptySubsequences: true)
-            if comps.count < 9 { continue }
-            let perm = String(comps[0])
-            let name = comps.dropFirst(8).joined(separator: " ")
-            let isDir = perm.first == "d"
-            parsed.append(RemoteEntry(name: name, isDirectory: isDir))
+            
+            // Split on whitespace but be more flexible
+            let components = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+            
+            // Need at least 9 components for a proper ls -la line
+            // drwxr-xr-x  3 user group  96 Dec  1 10:30 dirname
+            if components.count >= 9 {
+                let permissions = String(components[0])
+                let isDirectory = permissions.first == "d"
+                
+                // The filename is everything from component 8 onwards
+                let filename = components.dropFirst(8).joined(separator: " ")
+                
+                // Skip . and .. entries for cleaner navigation
+                if filename != "." && filename != ".." {
+                    parsed.append(RemoteEntry(name: filename, isDirectory: isDirectory))
+                    print("Added entry: '\(filename)' (dir: \(isDirectory))")
+                }
+            } else {
+                print("Skipping line with only \(components.count) components: '\(trimmed)'")
+            }
         }
 
+        // Always add ".." for going up (except for root)
+        if path != "/" {
+            parsed.insert(RemoteEntry(name: "..", isDirectory: true), at: 0)
+        }
+
+        // Sort: directories first, then files, alphabetically
         parsed.sort { (a, b) in
-            if a.isDirectory == b.isDirectory { return a.name.lowercased() < b.name.lowercased() }
+            if a.name == ".." { return true }
+            if b.name == ".." { return false }
+            if a.isDirectory == b.isDirectory {
+                return a.name.lowercased() < b.name.lowercased()
+            }
             return a.isDirectory && !b.isDirectory
         }
 
+        print("Final parsed entries: \(parsed.count)")
         entries = parsed
     }
 }
