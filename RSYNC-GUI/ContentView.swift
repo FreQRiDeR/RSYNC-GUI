@@ -30,8 +30,10 @@ struct ContentView: View {
     // SSH key options
     @State private var sourceUseSSHKey = false
     @State private var sourceSSHKeyPath: String = ""
+    @State private var sourceSSHKeyPassphrase: String = ""
     @State private var targetUseSSHKey = false
     @State private var targetSSHKeyPath: String = ""
+    @State private var targetSSHKeyPassphrase: String = ""
 
     // Flags for whether source/target are remote
     @State private var sourceIsRemote = false
@@ -182,6 +184,9 @@ struct ContentView: View {
                                     Label("Browse", systemImage: "key")
                                 }
                             }
+                            SecureField("Key passphrase (if required)", text: $sourceSSHKeyPassphrase)
+                                .textFieldStyle(.roundedBorder)
+                                .help("Enter the passphrase for your SSH private key if it's password-protected")
                         }
                     } else {
                         HStack {
@@ -230,6 +235,9 @@ struct ContentView: View {
                                     Label("Browse", systemImage: "key")
                                 }
                             }
+                            SecureField("Key passphrase (if required)", text: $targetSSHKeyPassphrase)
+                                .textFieldStyle(.roundedBorder)
+                                .help("Enter the passphrase for your SSH private key if it's password-protected")
                         }
                     } else {
                         HStack {
@@ -393,33 +401,42 @@ struct ContentView: View {
             destination = normalizeRemotePath(destination)
         }
         
-        // Determine password usage
+        // Determine password usage and SSH key passphrase
         let usePassword: Bool
         let password: String?
         let keyPath: String?
+        let keyPassphrase: String?
         
         if sourceIsRemote && sourceUsePassword {
             usePassword = true
             password = sourcePassword.isEmpty ? nil : sourcePassword
             keyPath = sourceUseSSHKey ? sourceSSHKeyPath : nil
+            keyPassphrase = sourceUseSSHKey && !sourceSSHKeyPassphrase.isEmpty ? sourceSSHKeyPassphrase : nil
         } else if targetIsRemote && targetUsePassword {
             usePassword = true
             password = targetPassword.isEmpty ? nil : targetPassword
             keyPath = targetUseSSHKey ? targetSSHKeyPath : nil
+            keyPassphrase = targetUseSSHKey && !targetSSHKeyPassphrase.isEmpty ? targetSSHKeyPassphrase : nil
         } else {
             usePassword = false
             password = nil
             keyPath = (sourceIsRemote && sourceUseSSHKey) ? sourceSSHKeyPath :
                      (targetIsRemote && targetUseSSHKey) ? targetSSHKeyPath : nil
+            keyPassphrase = (sourceIsRemote && sourceUseSSHKey && !sourceSSHKeyPassphrase.isEmpty) ? sourceSSHKeyPassphrase :
+                           (targetIsRemote && targetUseSSHKey && !targetSSHKeyPassphrase.isEmpty) ? targetSSHKeyPassphrase : nil
         }
+        
+        // Use key passphrase as password for expect script if no login password is provided
+        let effectivePassword = password ?? keyPassphrase
         
         let config = RsyncManager.RsyncConfig(
             source: source,
             destination: destination,
             options: options,
-            usePassword: usePassword,
-            password: password,
-            sshKeyPath: keyPath
+            usePassword: usePassword || (keyPassphrase != nil),
+            password: effectivePassword,
+            sshKeyPath: keyPath,
+            sshKeyPassphrase: keyPassphrase
         )
         
         // FIXED: Removed [weak self] and DispatchQueue wrapper

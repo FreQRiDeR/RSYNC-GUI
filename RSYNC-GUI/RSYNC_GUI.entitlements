@@ -2,23 +2,27 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-write</key>
-	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
-	<key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
-	<array>
-		<string>/usr/bin/ssh</string>
-		<string>$(PRODUCT_BUNDLE_IDENTIFIER)/sshpass</string>
-	</array>
-	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
     <key>com.apple.security.automation.apple-events</key>
     <true/>
-	<array>
-		<string>/usr/bin/rsync</string>
-		<string>/usr/libexec/rsync/</string>
-	</array>
+    <key>com.apple.security.temporary-exception.files.absolute-path.read-only</key>
+    <array>
+        <string>/usr/bin/ssh</string>
+        <string>/usr/bin/rsync</string>
+        <string>/usr/bin/expect</string>
+        <string>/bin/bash</string>
+        <string>/bin/cat</string>
+        <string>/bin/chmod</string>
+        <string>/bin/rm</string>
+    </array>
+    <key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/tmp</string>
+    </array>
 </dict>
 </plist>

@@ -18,6 +18,7 @@ class RsyncManager: ObservableObject {
         let usePassword: Bool
         let password: String?
         let sshKeyPath: String?
+        let sshKeyPassphrase: String?
     }
     
     func executeRsync(config: RsyncConfig, outputHandler: @escaping (String) -> Void) {
@@ -48,14 +49,17 @@ class RsyncManager: ObservableObject {
             // Add SSH key if specified
             if let keyPath = config.sshKeyPath, !keyPath.isEmpty {
                 sshOptions.append("-i \"\(keyPath)\"")
-            }
-            
-            // Authentication preferences
-            if config.usePassword {
-                sshOptions.append("-oPasswordAuthentication=yes")
-                sshOptions.append("-oPubkeyAuthentication=no")
+                // When using SSH key, enable public key auth and disable password auth
+                sshOptions.append("-oPubkeyAuthentication=yes")
+                sshOptions.append("-oPasswordAuthentication=no")
             } else {
-                sshOptions.append("-oPreferredAuthentications=publickey")
+                // No SSH key specified - use password authentication
+                if config.usePassword {
+                    sshOptions.append("-oPasswordAuthentication=yes")
+                    sshOptions.append("-oPubkeyAuthentication=no")
+                } else {
+                    sshOptions.append("-oPreferredAuthentications=publickey")
+                }
             }
             
             let sshCommand = "ssh " + sshOptions.joined(separator: " ")
@@ -72,21 +76,35 @@ class RsyncManager: ObservableObject {
     private func executeViaAppleScript(command: String, password: String?, outputHandler: @escaping (String) -> Void) {
         var fullCommand = command
         
-        // If password is provided, use expect for automation
-        if let pwd = password, !pwd.isEmpty {
-            let escapedPassword = pwd.replacingOccurrences(of: "'", with: "'\"'\"'")
-            let escapedCommand = command.replacingOccurrences(of: "'", with: "'\"'\"'")
+        // Determine if we need expect for automation (password OR SSH key passphrase)
+        let needsExpectAutomation = (password != nil && !password!.isEmpty)
+        
+        if needsExpectAutomation {
+            let escapedPassword = password!.replacingOccurrences(of: "\"", with: "\\\"")
+            
+            // Create a temporary script file to avoid command parsing issues
+            let tempScriptPath = "/tmp/rsync_script_\(UUID().uuidString).sh"
             
             fullCommand = """
-            expect -c "
-            spawn sh -c '\(escapedCommand)'
+            cat > \(tempScriptPath) << 'SCRIPT_EOF'
+            #!/bin/bash
+            \(command)
+            SCRIPT_EOF
+            chmod +x \(tempScriptPath)
+            
+            expect << 'EXPECT_EOF'
+            spawn \(tempScriptPath)
             expect {
-                -re \\".*assword.*:\\" { send \\"\(escapedPassword)\\\\r\\"; exp_continue }
-                -re \\".*yes/no.*\\" { send \\"yes\\\\r\\"; exp_continue }
-                eof { exit }
+                -re ".*assword.*:" { send "\(escapedPassword)\\r"; exp_continue }
+                -re ".*passphrase.*:" { send "\(escapedPassword)\\r"; exp_continue }
+                -re ".*Enter passphrase.*:" { send "\(escapedPassword)\\r"; exp_continue }
+                -re ".*yes/no.*" { send "yes\\r"; exp_continue }
+                eof
                 timeout { exit 1 }
             }
-            "
+            EXPECT_EOF
+            
+            rm -f \(tempScriptPath)
             """
         }
         
