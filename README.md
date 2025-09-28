@@ -36,7 +36,7 @@ Build & run
 2. Select the macOS target and run the app.
 
 Notes and caveats
-- Authentication: For unattended transfers, configure SSH keys and an ssh-agent. The GUI will not capture interactive password prompts reliably. If you need password-based authentication through the app, we can add an integrated ssh expect-like flow, but that is more complex and has security implications.
+- Authentication: For unattended transfers, configure SSH keys and an ssh-agent. The GUI will not capture interactive password prompts reliably. Use passwordless authentication keys for app as it can't reliably use passphrases yet.
 - Trailing slash: The "Copy contents of folder" toggle appends a trailing slash to the source path when enabled. This is how rsync distinguishes copying the folder contents (trailing slash) vs the folder itself.
 - Output streaming: The app captures stdout and stderr and shows them in the Output pane. If you need truly real-time streaming for very verbose transfers, we can refine the reading loop to use incremental reads of availableData instead of readToEnd() in some setups.
 
