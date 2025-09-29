@@ -10,6 +10,94 @@ import AppKit
 import Foundation
 import Darwin
 
+// MARK: - Bookmark Model
+struct RemoteBookmark: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var user: String
+    var host: String
+    var path: String
+    var useSSHKey: Bool
+    var sshKeyPath: String
+    var lastUsed: Date
+    
+    init(id: UUID = UUID(), name: String, user: String, host: String, path: String = "", useSSHKey: Bool = false, sshKeyPath: String = "", lastUsed: Date = Date()) {
+        self.id = id
+        self.name = name
+        self.user = user
+        self.host = host
+        self.path = path
+        self.useSSHKey = useSSHKey
+        self.sshKeyPath = sshKeyPath
+        self.lastUsed = lastUsed
+    }
+    
+    static func == (lhs: RemoteBookmark, rhs: RemoteBookmark) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
+// MARK: - Bookmark Manager
+class BookmarkManager: ObservableObject {
+    @Published var bookmarks: [RemoteBookmark] = []
+    
+    private let savePath = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("RSYNC-GUI")
+        .appendingPathComponent("bookmarks.json")
+    
+    init() {
+        loadBookmarks()
+    }
+    
+    func addBookmark(_ bookmark: RemoteBookmark) {
+        // Check if bookmark with same user@host already exists
+        if let index = bookmarks.firstIndex(where: { $0.user == bookmark.user && $0.host == bookmark.host }) {
+            // Update existing bookmark
+            bookmarks[index] = bookmark
+        } else {
+            bookmarks.append(bookmark)
+        }
+        saveBookmarks()
+    }
+    
+    func deleteBookmark(_ bookmark: RemoteBookmark) {
+        bookmarks.removeAll { $0.id == bookmark.id }
+        saveBookmarks()
+    }
+    
+    func updateLastUsed(_ bookmark: RemoteBookmark) {
+        if let index = bookmarks.firstIndex(where: { $0.id == bookmark.id }) {
+            bookmarks[index].lastUsed = Date()
+            saveBookmarks()
+        }
+    }
+    
+    func getRecentBookmarks(limit: Int = 5) -> [RemoteBookmark] {
+        return bookmarks.sorted { $0.lastUsed > $1.lastUsed }.prefix(limit).map { $0 }
+    }
+    
+    private func saveBookmarks() {
+        do {
+            let directory = savePath.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(bookmarks)
+            try data.write(to: savePath)
+        } catch {
+            print("Failed to save bookmarks: \(error)")
+        }
+    }
+    
+    private func loadBookmarks() {
+        do {
+            let data = try Data(contentsOf: savePath)
+            bookmarks = try JSONDecoder().decode([RemoteBookmark].self, from: data)
+        } catch {
+            print("Failed to load bookmarks: \(error)")
+            bookmarks = []
+        }
+    }
+}
+
 struct ContentView: View {
     // Local source/target
     @State private var localSource: String = ""
@@ -58,6 +146,17 @@ struct ContentView: View {
 
     // Rsync manager
     @StateObject private var rsyncManager = RsyncManager()
+    
+    // Bookmark manager
+    @StateObject private var bookmarkManager = BookmarkManager()
+    @State private var showingBookmarkSheet = false
+    @State private var bookmarkTarget: BookmarkTarget = .source
+    @State private var newBookmarkName: String = ""
+
+    enum BookmarkTarget {
+        case source
+        case target
+    }
 
     // Convenience computed properties
     var sourceProvided: Bool {
@@ -185,6 +284,43 @@ struct ContentView: View {
                     if sourceIsRemote {
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
+                                // Bookmarks dropdown
+                                Menu {
+                                    ForEach(bookmarkManager.getRecentBookmarks()) { bookmark in
+                                        Button(action: { loadBookmark(bookmark, target: .source) }) {
+                                            VStack(alignment: .leading) {
+                                                Text(bookmark.name)
+                                                    .font(.headline)
+                                                Text("\(bookmark.user)@\(bookmark.host)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                    }
+                                    if !bookmarkManager.bookmarks.isEmpty {
+                                        Divider()
+                                        Button("Manage Bookmarks...") {
+                                            bookmarkTarget = .source
+                                            showingBookmarkSheet = true
+                                        }
+                                    }
+                                } label: {
+                                    Label("Bookmarks", systemImage: "bookmark.fill")
+                                }
+                                .fixedSize()
+                                
+                                Button(action: {
+                                    bookmarkTarget = .source
+                                    newBookmarkName = "\(sourceRemoteUser)@\(sourceRemoteHost)"
+                                    saveCurrentAsBookmark()
+                                }) {
+                                    Label("Save", systemImage: "bookmark")
+                                }
+                                .disabled(sourceRemoteUser.isEmpty || sourceRemoteHost.isEmpty)
+                                .help("Save current connection as bookmark")
+                            }
+                            
+                            HStack {
                                 TextField("Username", text: $sourceRemoteUser)
                                     .textFieldStyle(.roundedBorder)
                                     .frame(width: 120)
@@ -244,6 +380,43 @@ struct ContentView: View {
 
                     if targetIsRemote {
                         VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                // Bookmarks dropdown
+                                Menu {
+                                    ForEach(bookmarkManager.getRecentBookmarks()) { bookmark in
+                                        Button(action: { loadBookmark(bookmark, target: .target) }) {
+                                            VStack(alignment: .leading) {
+                                                Text(bookmark.name)
+                                                    .font(.headline)
+                                                Text("\(bookmark.user)@\(bookmark.host)")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                    }
+                                    if !bookmarkManager.bookmarks.isEmpty {
+                                        Divider()
+                                        Button("Manage Bookmarks...") {
+                                            bookmarkTarget = .target
+                                            showingBookmarkSheet = true
+                                        }
+                                    }
+                                } label: {
+                                    Label("Bookmarks", systemImage: "bookmark.fill")
+                                }
+                                .fixedSize()
+                                
+                                Button(action: {
+                                    bookmarkTarget = .target
+                                    newBookmarkName = "\(targetRemoteUser)@\(targetRemoteHost)"
+                                    saveCurrentAsBookmark()
+                                }) {
+                                    Label("Save", systemImage: "bookmark")
+                                }
+                                .disabled(targetRemoteUser.isEmpty || targetRemoteHost.isEmpty)
+                                .help("Save current connection as bookmark")
+                            }
+                            
                             HStack {
                                 TextField("Username", text: $targetRemoteUser)
                                     .textFieldStyle(.roundedBorder)
@@ -377,7 +550,66 @@ struct ContentView: View {
                     targetRemotePath = path
                 }
             }
+            .sheet(isPresented: $showingBookmarkSheet) {
+                BookmarkManagerView(bookmarkManager: bookmarkManager) { bookmark in
+                    loadBookmark(bookmark, target: bookmarkTarget)
+                }
+            }
         .frame(minWidth: 800, minHeight: 700)
+    }
+
+    // MARK: - Bookmark Functions
+    func saveCurrentAsBookmark() {
+        let user: String
+        let host: String
+        let path: String
+        let useKey: Bool
+        let keyPath: String
+        
+        if bookmarkTarget == .source {
+            user = sourceRemoteUser
+            host = sourceRemoteHost
+            path = sourceRemotePath
+            useKey = sourceUseSSHKey
+            keyPath = sourceSSHKeyPath
+        } else {
+            user = targetRemoteUser
+            host = targetRemoteHost
+            path = targetRemotePath
+            useKey = targetUseSSHKey
+            keyPath = targetSSHKeyPath
+        }
+        
+        guard !user.isEmpty && !host.isEmpty else { return }
+        
+        let bookmark = RemoteBookmark(
+            name: newBookmarkName.isEmpty ? "\(user)@\(host)" : newBookmarkName,
+            user: user,
+            host: host,
+            path: path,
+            useSSHKey: useKey,
+            sshKeyPath: keyPath
+        )
+        
+        bookmarkManager.addBookmark(bookmark)
+    }
+    
+    func loadBookmark(_ bookmark: RemoteBookmark, target: BookmarkTarget) {
+        if target == .source {
+            sourceRemoteUser = bookmark.user
+            sourceRemoteHost = bookmark.host
+            sourceRemotePath = bookmark.path
+            sourceUseSSHKey = bookmark.useSSHKey
+            sourceSSHKeyPath = bookmark.sshKeyPath
+        } else {
+            targetRemoteUser = bookmark.user
+            targetRemoteHost = bookmark.host
+            targetRemotePath = bookmark.path
+            targetUseSSHKey = bookmark.useSSHKey
+            targetSSHKeyPath = bookmark.sshKeyPath
+        }
+        
+        bookmarkManager.updateLastUsed(bookmark)
     }
 
     // MARK: - Local file pickers
@@ -492,7 +724,6 @@ struct ContentView: View {
             sshKeyPassphrase: nil
         )
         
-        // FIXED: Removed [weak self] and DispatchQueue wrapper
         rsyncManager.executeRsync(config: config) { output in
             appendOutput(output)
         }
@@ -517,6 +748,189 @@ struct ContentView: View {
         } else {
             return path + ":"
         }
+    }
+}
+
+// MARK: - Bookmark Manager View
+struct BookmarkManagerView: View {
+    @Environment(\.presentationMode) var presentationMode
+    @ObservedObject var bookmarkManager: BookmarkManager
+    let onSelect: (RemoteBookmark) -> Void
+    
+    @State private var editingBookmark: RemoteBookmark?
+    @State private var showingEditSheet = false
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Text("Manage Bookmarks")
+                    .font(.headline)
+                Spacer()
+                Button("Done") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+            }
+            .padding()
+            
+            if bookmarkManager.bookmarks.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "bookmark.slash")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text("No bookmarks yet")
+                        .foregroundColor(.secondary)
+                    Text("Save a connection using the 'Save' button")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(bookmarkManager.bookmarks.sorted { $0.lastUsed > $1.lastUsed }) { bookmark in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(bookmark.name)
+                                    .font(.headline)
+                                Text("\(bookmark.user)@\(bookmark.host)")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                if !bookmark.path.isEmpty {
+                                    Text(bookmark.path)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                if bookmark.useSSHKey {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "key.fill")
+                                            .font(.caption)
+                                        Text(bookmark.sshKeyPath)
+                                            .font(.caption)
+                                    }
+                                    .foregroundColor(.blue)
+                                }
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                editingBookmark = bookmark
+                                showingEditSheet = true
+                            }) {
+                                Image(systemName: "pencil")
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Button(action: {
+                                onSelect(bookmark)
+                                presentationMode.wrappedValue.dismiss()
+                            }) {
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .foregroundColor(.accentColor)
+                            }
+                            .buttonStyle(.plain)
+                            
+                            Button(action: {
+                                bookmarkManager.deleteBookmark(bookmark)
+                            }) {
+                                Image(systemName: "trash")
+                                    .foregroundColor(.red)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 500, minHeight: 400)
+        .sheet(isPresented: $showingEditSheet) {
+            if let bookmark = editingBookmark {
+                EditBookmarkView(bookmark: bookmark) { edited in
+                    bookmarkManager.addBookmark(edited)
+                    showingEditSheet = false
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Edit Bookmark View
+struct EditBookmarkView: View {
+    @Environment(\.presentationMode) var presentationMode
+    let bookmark: RemoteBookmark
+    let onSave: (RemoteBookmark) -> Void
+    
+    @State private var name: String
+    @State private var user: String
+    @State private var host: String
+    @State private var path: String
+    @State private var useSSHKey: Bool
+    @State private var sshKeyPath: String
+    
+    init(bookmark: RemoteBookmark, onSave: @escaping (RemoteBookmark) -> Void) {
+        self.bookmark = bookmark
+        self.onSave = onSave
+        _name = State(initialValue: bookmark.name)
+        _user = State(initialValue: bookmark.user)
+        _host = State(initialValue: bookmark.host)
+        _path = State(initialValue: bookmark.path)
+        _useSSHKey = State(initialValue: bookmark.useSSHKey)
+        _sshKeyPath = State(initialValue: bookmark.sshKeyPath)
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Edit Bookmark")
+                .font(.headline)
+            
+            Form {
+                TextField("Bookmark Name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                
+                TextField("Username", text: $user)
+                    .textFieldStyle(.roundedBorder)
+                
+                TextField("Host/IP", text: $host)
+                    .textFieldStyle(.roundedBorder)
+                
+                TextField("Path (optional)", text: $path)
+                    .textFieldStyle(.roundedBorder)
+                
+                Toggle("Use SSH Key", isOn: $useSSHKey)
+                    .toggleStyle(.checkbox)
+                
+                if useSSHKey {
+                    TextField("SSH Key Path", text: $sshKeyPath)
+                        .textFieldStyle(.roundedBorder)
+                }
+            }
+            .padding()
+            
+            HStack {
+                Button("Cancel") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+                
+                Spacer()
+                
+                Button("Save") {
+                    let edited = RemoteBookmark(
+                        id: bookmark.id,
+                        name: name,
+                        user: user,
+                        host: host,
+                        path: path,
+                        useSSHKey: useSSHKey,
+                        sshKeyPath: sshKeyPath,
+                        lastUsed: bookmark.lastUsed
+                    )
+                    onSave(edited)
+                }
+                .disabled(name.isEmpty || user.isEmpty || host.isEmpty)
+            }
+            .padding()
+        }
+        .frame(width: 400, height: 350)
     }
 }
 
@@ -674,7 +1088,6 @@ struct RemoteBrowserView: View {
         presentationMode.wrappedValue.dismiss()
     }
 
-    // FIXED: Replaced with AppleScript implementation
     func listDirectory() {
         guard !user.isEmpty && !host.isEmpty else {
             errorMessage = "Please enter username and host"
