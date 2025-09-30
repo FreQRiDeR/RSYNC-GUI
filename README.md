@@ -5,6 +5,8 @@
 RSYNC-GUI
 =========
 
+PASSWORD IS CURRENTLY BROKEN! USE SSHKEY AUTHENTICATION (Passwordless key) For now.
+
 A small macOS SwiftUI GUI wrapper for rsync. It lets you pick local source/target paths (via a file browser), enter remote rsync-style endpoints (user@host:/path), toggle the most popular rsync options, preview the generated command, and run rsync while capturing stdout/stderr into an output pane.
 
 This repository contains a minimal, modern-looking macOS app that demonstrates the core features you requested. It intentionally relies on the system rsync and ssh for remote transfers.
