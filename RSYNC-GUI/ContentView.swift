@@ -111,9 +111,6 @@ struct ContentView: View {
     @State private var targetRemoteHost: String = ""
     @State private var targetRemotePath: String = ""
     
-    // Legacy combined remote strings (for compatibility)
-    @State private var remoteSource: String = ""
-    @State private var remoteTarget: String = ""
     // Remote browser presentation
     @State private var showingRemoteBrowserForSource = false
     @State private var showingRemoteBrowserForTarget = false
@@ -234,11 +231,11 @@ struct ContentView: View {
             parts.append("-e \"\(sshCmd)\"")
         }
 
-        // source and target strings
+        // source and target strings - USE COMPUTED PROPERTIES
         func quoted(_ s: String) -> String { return "\"\(s)\"" }
 
-        var src = sourceIsRemote ? remoteSource : localSource
-        var dst = targetIsRemote ? remoteTarget : localTarget
+        var src = sourceIsRemote ? computedRemoteSource : localSource
+        var dst = targetIsRemote ? computedRemoteTarget : localTarget
 
         // Normalize remote spec to user@host:/path so rsync treats it as remote
         func normalizeRemote(_ s: String) -> String {
