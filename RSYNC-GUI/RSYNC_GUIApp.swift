@@ -1,17 +1,20 @@
-//
-//  RSYNC_GUIApp.swift
-//  RSYNC-GUI
-//
-//  Created by FreQRiDeR on 9/15/25.
-//
-
 import SwiftUI
 
 @main
 struct RSYNC_GUIApp: App {
+    
+    init() {
+        // Disable automatic state restoration
+        UserDefaults.standard.set(false, forKey: "NSQuitAlwaysKeepsWindows")
+    }
+    
     var body: some Scene {
         WindowGroup {
             ContentView()
+        }
+        .commands {
+            // Disable automatic window restoration
+            CommandGroup(replacing: .newItem) { }
         }
     }
 }

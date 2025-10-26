@@ -2,7 +2,7 @@
 //  RsyncManager.swift
 //  RSYNC-GUI
 //
-//  AppleScript-based implementation to bypass sandboxing
+//  Created by FreQRiDeR on 9/15/25.
 //
 
 import Foundation
@@ -29,41 +29,36 @@ class RsyncManager: ObservableObject {
         let command = buildRsyncCommand(config: config)
         outputHandler("$ \(command)\n")
         
-        executeViaAppleScript(command: command, config: config, outputHandler: outputHandler)
+        executeViaTerminal(command: command, config: config, outputHandler: outputHandler)
     }
     
     private func buildRsyncCommand(config: RsyncConfig) -> String {
-        var parts: [String] = ["/usr/bin/rsync"]  // Use system rsync
+        var parts: [String] = ["rsync"]
         
         // Add options
         parts.append(contentsOf: config.options)
         
         // Configure SSH if needed
         if config.source.contains("@") || config.destination.contains("@") {
-            var sshOptions = [
-                "-oStrictHostKeyChecking=no",
-                "-oUserKnownHostsFile=/dev/null",
-                "-oGlobalKnownHostsFile=/dev/null"
-            ]
+            var sshParts: [String] = ["ssh"]
             
-            // Add SSH key if specified
             if let keyPath = config.sshKeyPath, !keyPath.isEmpty {
-                sshOptions.append("-i \"\(keyPath)\"")
-                // When using SSH key, enable public key auth and disable password auth
-                sshOptions.append("-oPubkeyAuthentication=yes")
-                sshOptions.append("-oPasswordAuthentication=no")
-            } else {
-                // No SSH key specified - use password authentication
-                if config.usePassword {
-                    sshOptions.append("-oPasswordAuthentication=yes")
-                    sshOptions.append("-oPubkeyAuthentication=no")
+                // Use tilde notation for cleaner command
+                let tidyPath: String
+                if keyPath.hasPrefix(FileManager.default.homeDirectoryForCurrentUser.path) {
+                    let home = FileManager.default.homeDirectoryForCurrentUser.path
+                    tidyPath = "~" + keyPath.dropFirst(home.count)
                 } else {
-                    sshOptions.append("-oPreferredAuthentications=publickey")
+                    tidyPath = keyPath
                 }
+                
+                sshParts.append("-i")
+                sshParts.append(tidyPath)
             }
             
-            let sshCommand = "ssh " + sshOptions.joined(separator: " ")
-            parts.append("-e \"\(sshCommand)\"")
+            let sshCommand = sshParts.joined(separator: " ")
+            parts.append("-e")
+            parts.append("'\(sshCommand)'")
         }
         
         // Add source and destination (properly escaped)
@@ -73,69 +68,40 @@ class RsyncManager: ObservableObject {
         return parts.joined(separator: " ")
     }
     
-    private func executeViaAppleScript(command: String, config: RsyncConfig, outputHandler: @escaping (String) -> Void) {
-        var fullCommand = command
+    private func executeViaTerminal(command: String, config: RsyncConfig, outputHandler: @escaping (String) -> Void) {
+        // Build the full command - rsync will use system PATH
+        let fullCommand = "\(command); echo ''; echo 'Press any key to close this window...'; read -n 1; exit 0"
         
-        // For SSH key authentication with passphrase, load key into SSH agent first
-        if let keyPath = config.sshKeyPath, !keyPath.isEmpty, let passphrase = config.sshKeyPassphrase, !passphrase.isEmpty {
-            // Use expect to load the key into SSH agent, then run rsync normally
-            fullCommand = """
-            # Load SSH key into agent with passphrase
-            expect << 'LOAD_KEY_EOF'
-            spawn ssh-add "\(keyPath)"
-            expect {
-                -re "Enter passphrase.*:" { send "\(passphrase.replacingOccurrences(of: "\"", with: "\\\""))\\r"; exp_continue }
-                -re "Identity added.*" { exit 0 }
-                eof { exit 0 }
-                timeout { exit 1 }
-            }
-            LOAD_KEY_EOF
-            
-            # Now run rsync - SSH agent will handle authentication
-            \(command)
-            
-            # Clean up - remove key from agent
-            ssh-add -d "\(keyPath)" 2>/dev/null || true
-            """
-        } else if let pwd = config.password, !pwd.isEmpty {
-            // Regular password authentication
-            let escapedPassword = pwd.replacingOccurrences(of: "\"", with: "\\\"")
-            let tempScriptPath = "/tmp/rsync_script_\(UUID().uuidString).sh"
-            
-            fullCommand = """
-            cat > \(tempScriptPath) << 'SCRIPT_EOF'
-            #!/bin/bash
-            \(command)
-            SCRIPT_EOF
-            chmod +x \(tempScriptPath)
-            
-            expect << 'EXPECT_EOF'
-            spawn \(tempScriptPath)
-            expect {
-                -re ".*assword.*:" { send "\(escapedPassword)\\r"; exp_continue }
-                -re ".*yes/no.*" { send "yes\\r"; exp_continue }
-                eof { exit 0 }
-                timeout { exit 1 }
-            }
-            EXPECT_EOF
-            
-            rm -f \(tempScriptPath)
-            """
-        }
-        // If no password/passphrase needed, run command directly
+        // Escape for AppleScript: backslashes first, then double quotes
+        let escapedForAppleScript = fullCommand
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         
-        // Escape the command for AppleScript
-        let escapedForAppleScript = fullCommand.replacingOccurrences(of: "\\", with: "\\\\")
-                                                .replacingOccurrences(of: "\"", with: "\\\"")
-        
+        // AppleScript to launch Terminal and execute the command
         let appleScript = """
-        do shell script "\(escapedForAppleScript)"
+        if application "Terminal" is not running then
+            tell application "Terminal"
+                launch
+                do script "\(escapedForAppleScript)"
+            end tell
+        else
+            tell application "Terminal"
+                activate
+                do script "\(escapedForAppleScript)"
+            end tell
+        end if
         """
+        
+        outputHandler("Launching Terminal...\n")
+        outputHandler("Command: \(command)\n\n")
+        
+        print("=== AppleScript Debug ===")
+        print(appleScript)
+        print("=== End Debug ===")
         
         DispatchQueue.global(qos: .userInitiated).async {
             let script = NSAppleScript(source: appleScript)
             var errorDict: NSDictionary?
-            
             let result = script?.executeAndReturnError(&errorDict)
             
             DispatchQueue.main.async {
@@ -143,13 +109,15 @@ class RsyncManager: ObservableObject {
                 
                 if let error = errorDict {
                     let errorMessage = error["NSAppleScriptErrorMessage"] as? String ?? "Unknown error"
-                    outputHandler("Error: \(errorMessage)\n")
+                    outputHandler("❌ Error launching Terminal: \(errorMessage)\n")
+                    outputHandler("Make sure Terminal.app has necessary permissions.\n")
                 } else {
-                    // AppleScript do shell script captures stdout
+                    outputHandler("✅ Command sent to Terminal successfully\n")
+                    outputHandler("Terminal window opened - monitor progress there.\n")
+                    
                     if let output = result?.stringValue, !output.isEmpty {
-                        outputHandler(output)
+                        outputHandler("Terminal response: \(output)\n")
                     }
-                    outputHandler("\nCommand completed successfully\n")
                 }
             }
         }
