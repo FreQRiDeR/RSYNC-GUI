@@ -10,6 +10,7 @@
 		DC7A597F2E787A8700599FEF /* RSYNC-GUI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "RSYNC-GUI.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		DCB131232E78B71100C2AAAC /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = README.md; sourceTree = "<group>"; };
 		DCD18E512E790CF4006AE51E /* RSYNC-GUI.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "RSYNC-GUI.png"; sourceTree = "<group>"; };
+		DCEF3A202EAEB2BE001167EA /* RSYNC-GUI.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "RSYNC-GUI.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -34,6 +35,7 @@
 		DC7A59762E787A8700599FEF = {
 			isa = PBXGroup;
 			children = (
+				DCEF3A202EAEB2BE001167EA /* RSYNC-GUI.entitlements */,
 				DCB131232E78B71100C2AAAC /* README.md */,
 				DC7A59812E787A8700599FEF /* RSYNC-GUI */,
 				DC7A59802E787A8700599FEF /* Products */,
@@ -59,6 +61,7 @@
 				DC7A597B2E787A8700599FEF /* Sources */,
 				DC7A597C2E787A8700599FEF /* Frameworks */,
 				DC7A597D2E787A8700599FEF /* Resources */,
+				DC401E3D2EAEB8570031AEE3 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -117,6 +120,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		DC401E3D2EAEB8570031AEE3 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\necho \"🔐 Ad hoc signing RSYNC-GUI.app with entitlements…\"\n\nAPP_PATH=\"${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME}\"\nENTITLEMENTS_PATH=\"${PROJECT_DIR}/RSYNC-GUI.entitlements\"\n\ncodesign --force --sign - --entitlements \"$ENTITLEMENTS_PATH\" \"$APP_PATH\"\n\necho \"✅ Signed: $APP_PATH\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		DC7A597B2E787A8700599FEF /* Sources */ = {
@@ -258,12 +281,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "RSYNC-GUI/RSYNC_GUI.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "RSYNC-GUI.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = 7WQU2QFCC6;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -293,12 +316,12 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "RSYNC-GUI/RSYNC_GUI.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "RSYNC-GUI.entitlements";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "-";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
-				DEVELOPMENT_TEAM = 7WQU2QFCC6;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
