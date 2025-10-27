@@ -2,6 +2,7 @@
 
 ## 1.0.3
 - Now executes commands in terminal.
+- Major bookmarks rework! Now saves complete jobs and are editable. 
 - Uses rsync binary in $PATH.
 - UI enhancements, Entitlements fix. 
 
