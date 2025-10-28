@@ -1,9 +1,10 @@
 import sys, os, json, uuid, subprocess
+import stat
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QTextEdit, QPushButton,
     QVBoxLayout, QHBoxLayout, QCheckBox, QGroupBox, QFileDialog,
-    QGridLayout, QSpacerItem, QSizePolicy, QComboBox, QMessageBox
+    QGridLayout, QSpacerItem, QSizePolicy, QComboBox, QMessageBox, 
 )
 from PyQt6.QtCore import Qt
 
@@ -72,6 +73,198 @@ class BookmarkManager:
     def recent(self, limit=10):
         return sorted(self.bookmarks, key=lambda b: b.lastUsed, reverse=True)[:limit]
     
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QListWidget, QPushButton, QLabel
+
+class SSHKeyBrowserDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Select SSH Public Key")
+        self.setMinimumSize(500, 300)
+
+        self.layout = QVBoxLayout()
+        self.keyList = QListWidget()
+        self.preview = QLabel("Select a key to preview its contents.")
+        self.preview.setWordWrap(True)
+        self.preview.setStyleSheet("font-family: monospace;")
+
+        self.selectBtn = QPushButton("Use Selected Key")
+        self.selectBtn.setEnabled(False)
+        self.selectBtn.clicked.connect(self.accept)
+
+        self.keyList.currentItemChanged.connect(self.show_preview)
+
+        self.layout.addWidget(self.keyList)
+        self.layout.addWidget(self.preview)
+        self.layout.addWidget(self.selectBtn)
+        self.setLayout(self.layout)
+
+        self.selectedKeyPath = None
+        self.load_keys()
+
+    def load_keys(self):
+        ssh_dir = os.path.expanduser("~/.ssh")
+        if not os.path.exists(ssh_dir):
+            self.preview.setText("No ~/.ssh directory found.")
+            return
+
+        for file in os.listdir(ssh_dir):
+            full_path = os.path.join(ssh_dir, file)
+            if os.path.isfile(full_path) and not file.endswith(".pub"):
+                self.keyList.addItem(full_path)
+
+    def show_preview(self, current, _):
+        if not current:
+            self.preview.setText("Select a key to preview its contents.")
+            self.selectBtn.setEnabled(False)
+            return
+
+        path = current.text()
+        try:
+            with open(path, "r") as f:
+                content = f.read().strip()
+                self.preview.setText(content)
+                self.selectedKeyPath = path
+                self.selectBtn.setEnabled(True)
+        except Exception as e:
+            self.preview.setText(f"Error reading key: {e}")
+            self.selectBtn.setEnabled(False)
+
+    def get_selected_key(self):
+        return self.selectedKeyPath
+    
+import stat
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QListWidget,
+    QPushButton, QSpacerItem, QSizePolicy
+)
+import paramiko
+import os
+
+class RemoteBrowserDialog(QDialog):
+    def __init__(self, host, user, key_path, start_path="~", parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Browse Remote Path")
+        self.setMinimumSize(600, 400)
+
+        self.host = host
+        self.user = user
+        self.key_path = key_path
+        self.current_path = start_path
+
+        # Layouts FIRST
+        self.layout = QVBoxLayout()
+        self.breadcrumbLayout = QHBoxLayout()
+        self.layout.addLayout(self.breadcrumbLayout)
+
+        # Path label
+        self.pathLabel = QLabel(f"Current: {self.current_path}")
+        self.layout.addWidget(self.pathLabel)
+
+        # File list
+        self.fileList = QListWidget()
+        self.fileList.itemDoubleClicked.connect(self.enter_directory)
+        self.layout.addWidget(self.fileList)
+
+        # Button bar
+        btnBar = QHBoxLayout()
+        self.upBtn = QPushButton("⬆ Up")
+        self.upBtn.setFixedSize(80, 28)
+        self.upBtn.clicked.connect(self.go_up_directory)
+        btnBar.addWidget(self.upBtn)
+        btnBar.addStretch()
+        self.selectBtn = QPushButton("Use This Path")
+        self.selectBtn.setFixedSize(120, 28)
+        self.selectBtn.clicked.connect(self.accept)
+        btnBar.addWidget(self.selectBtn)
+        self.layout.addLayout(btnBar)
+
+        self.setLayout(self.layout)
+
+        self.selectedPath = None
+        self.client = None
+        self.sftp = None
+
+        self.connect_ssh()
+        self.load_directory()
+
+    def connect_ssh(self):
+        self.client = paramiko.SSHClient()
+        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        self.client.connect(hostname=self.host, username=self.user, key_filename=self.key_path)
+
+        # Resolve ~ to full path
+        if self.current_path == "~":
+            stdin, stdout, stderr = self.client.exec_command("echo $HOME")
+            resolved_home = stdout.read().decode().strip()
+            self.current_path = resolved_home
+
+        self.sftp = self.client.open_sftp()
+
+    def load_directory(self):
+        try:
+            self.fileList.clear()
+            self.pathLabel.setText(f"Current: {self.current_path}")
+            self.update_breadcrumbs()
+            self.sftp.chdir(self.current_path)
+            for item in self.sftp.listdir():
+                self.fileList.addItem(item)
+        except Exception as e:
+            self.fileList.addItem(f"❌ Error: {e}")
+
+    def enter_directory(self, item):
+        name = item.text()
+        full_path = os.path.join(self.current_path, name)
+
+        try:
+            attr = self.sftp.stat(full_path)
+            if stat.S_ISDIR(attr.st_mode):
+                self.current_path = full_path
+                self.load_directory()
+            else:
+                self.selectedPath = full_path
+                self.accept()
+        except Exception as e:
+            self.fileList.addItem(f"❌ Error accessing {full_path}: {e}")
+            self.selectedPath = full_path
+            self.accept()
+
+    def go_up_directory(self):
+        parent = os.path.dirname(self.current_path.rstrip("/"))
+        if parent and parent != self.current_path:
+            self.current_path = parent
+            self.load_directory()
+
+    def update_breadcrumbs(self):
+        # Clear old buttons
+        for i in reversed(range(self.breadcrumbLayout.count())):
+            widget = self.breadcrumbLayout.itemAt(i).widget()
+            if widget:
+                widget.deleteLater()
+
+        parts = self.current_path.strip("/").split("/")
+        path_so_far = "/"
+        for part in parts:
+            path_so_far = os.path.join(path_so_far, part)
+            btn = QPushButton(part)
+            btn.setStyleSheet("text-decoration: underline; background: none; border: none; color: blue;")
+            btn.clicked.connect(lambda _, p=path_so_far: self.jump_to_path(p))
+            self.breadcrumbLayout.addWidget(btn)
+
+        self.breadcrumbLayout.addItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum))
+
+    def jump_to_path(self, path):
+        self.current_path = path
+        self.load_directory()
+
+    def get_selected_path(self):
+        return self.selectedPath or self.current_path
+
+    def closeEvent(self, event):
+        if self.sftp: self.sftp.close()
+        if self.client: self.client.close()
+        super().closeEvent(event)
+
+    
 class RsyncGUI(QWidget):
     def build_command(self):
         parts = ["rsync"]
@@ -112,17 +305,23 @@ class RsyncGUI(QWidget):
         parts.append(f'"{dst}"')
         return " ".join(parts)
 
+    import subprocess
 
     def run_rsync(self):
         cmd = self.build_command()
         self.outputLog.append(f"$ {cmd}\n")
 
-        try:
-            process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-            for line in process.stdout:
-                self.outputLog.append(line)
-        except Exception as e:
-            self.outputLog.append(f"❌ Error: {e}")
+        # Escape double quotes for AppleScript
+        escaped_cmd = cmd.replace('"', '\\"')
+
+        script = f'''
+        tell application "Terminal"
+            activate
+            do script "{escaped_cmd}"
+        end tell
+        '''
+        subprocess.run(["osascript", "-e", script])
+
 
     def update_bookmark(self):
         index = self.bookmarkDropdown.currentIndex()
@@ -160,7 +359,9 @@ class RsyncGUI(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("RSYNC GUI")
-        self.setMinimumSize(720, 680)
+        self.setMinimumSize(600, 780)   # Prevents shrinking too small
+        self.resize(600, 780)  # Sets initial window size
+
 
         # Bookmark system
         self.bookmarkManager = BookmarkManager()
@@ -201,9 +402,14 @@ class RsyncGUI(QWidget):
         self.copyContents = QCheckBox("Copy contents (trailing slash)")
 
         # Command preview + output
-        self.commandPreview = QLabel()
+        self.commandPreview = QTextEdit()
+        self.commandPreview.setReadOnly(True)
+        self.commandPreview.setMaximumHeight(60)
+        self.commandPreview.setStyleSheet("font-family: monospace;")
+
         self.outputLog = QTextEdit()
         self.outputLog.setReadOnly(True)
+        self.outputLog.setStyleSheet("font-family: monospace;")
 
         # Buttons
         runBtn = QPushButton("Run rsync")
@@ -245,6 +451,11 @@ class RsyncGUI(QWidget):
             self.bookmarkDropdown.addItem(b.name, b)
         self.bookmarkDropdown.blockSignals(False)
 
+        if self.bookmarkDropdown.count() == 1:
+            self.load_bookmark(0)
+
+
+
     def suggest_bookmark_name(self):
         src = self.sourceRemotePath.text() if self.sourceIsRemote.isChecked() else self.sourceLocalPath.text()
         dst = self.targetRemotePath.text() if self.targetIsRemote.isChecked() else self.targetLocalPath.text()
@@ -275,6 +486,11 @@ class RsyncGUI(QWidget):
         self.sourceRemoteBox.addWidget(self.sourceHost)
         self.sourceRemoteBox.addWidget(QLabel("Path"))
         self.sourceRemoteBox.addWidget(self.sourceRemotePath)
+        browseRemoteBtn = QPushButton("Browse Remote…")
+        browseRemoteBtn.clicked.connect(lambda: self.pick_remote_path(
+            self.sourceRemotePath, self.sourceUser, self.sourceHost, self.sourceSSHKeyPath))
+        self.sourceRemoteBox.addWidget(browseRemoteBtn)
+
 
         self.sourceSSHBox = QHBoxLayout()
         self.sourceSSHBox.addWidget(self.sourceUseSSHKey)
@@ -292,8 +508,11 @@ class RsyncGUI(QWidget):
         layout.addLayout(self.sourceSSHBox)
         layout.addLayout(self.sourceLocalBox)
         group.setLayout(layout)
+        browseKeyBtn = QPushButton("Browse Key")
+        browseKeyBtn.clicked.connect(lambda: self.pick_ssh_key(self.sourceSSHKeyPath))
+        self.sourceSSHBox.addWidget(browseKeyBtn)
         return group
-    
+              
     def toggleSourceFields(self):
         remote = self.sourceIsRemote.isChecked()
         for i in range(self.sourceRemoteBox.count()):
@@ -317,6 +536,12 @@ class RsyncGUI(QWidget):
         self.targetRemoteBox.addWidget(self.targetHost)
         self.targetRemoteBox.addWidget(QLabel("Path"))
         self.targetRemoteBox.addWidget(self.targetRemotePath)
+        browseRemoteBtn = QPushButton("Browse Remote…")
+        browseRemoteBtn.clicked.connect(lambda: self.pick_remote_path(
+            self.targetRemotePath, self.targetUser, self.targetHost, self.targetSSHKeyPath))
+        self.targetRemoteBox.addWidget(browseRemoteBtn)
+
+        
 
         self.targetSSHBox = QHBoxLayout()
         self.targetSSHBox.addWidget(self.targetUseSSHKey)
@@ -334,12 +559,36 @@ class RsyncGUI(QWidget):
         layout.addLayout(self.targetSSHBox)
         layout.addLayout(self.targetLocalBox)
         group.setLayout(layout)
+        browseKeyBtn = QPushButton("Browse Key")
+        browseKeyBtn.clicked.connect(lambda: self.pick_ssh_key(self.targetSSHKeyPath))
+        self.targetSSHBox.addWidget(browseKeyBtn)
         return group
     
     def pick_folder(self, field):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder")
         if folder:
             field.setText(folder)
+
+    def pick_remote_path(self, field, userField, hostField, keyField):
+        host = hostField.text().strip()
+        user = userField.text().strip()
+        key = keyField.text().strip()
+        if not host or not user or not key:
+            QMessageBox.warning(self, "Missing Info", "Please fill in user, host, and SSH key path.")
+            return
+
+        dialog = RemoteBrowserDialog(host, user, key, parent=self)
+        if dialog.exec():
+            selected = dialog.get_selected_path()
+            if selected:
+                field.setText(selected)
+
+    def pick_ssh_key(self, field):
+        dialog = SSHKeyBrowserDialog(self)
+        if dialog.exec():
+            selected = dialog.get_selected_key()
+            if selected:
+                field.setText(selected)
 
     def toggleTargetFields(self):
         remote = self.targetIsRemote.isChecked()
@@ -364,16 +613,24 @@ class RsyncGUI(QWidget):
     def buildOptionsGroup(self):
         group = QGroupBox("Options")
         layout = QGridLayout()
+
+        layout.setHorizontalSpacing(170)  # 👈 Add generous spacing between columns
+        layout.setVerticalSpacing(8)     # Optional: tighten vertical spacing
+
         layout.addWidget(self.optArchive, 0, 0)
         layout.addWidget(self.optVerbose, 1, 0)
         layout.addWidget(self.optProgress, 2, 0)
         layout.addWidget(self.optDryRun, 3, 0)
+
         layout.addWidget(self.optDelete, 0, 1)
         layout.addWidget(self.optHumanReadable, 1, 1)
         layout.addWidget(self.copyContents, 2, 1)
+
         layout.addItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 3, 1)
+
         group.setLayout(layout)
         return group
+
 
     def get_options_config(self):
         return {
