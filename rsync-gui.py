@@ -273,7 +273,9 @@ class RsyncGUI(QWidget):
         if self.optProgress.isChecked(): parts.append("--progress")
         if self.optDryRun.isChecked(): parts.append("--dry-run")
         if self.optDelete.isChecked(): parts.append("--delete")
+        if self.optIgnoreExisting.isChecked(): parts.append("--ignore-existing")
         if self.optHumanReadable.isChecked(): parts.append("-h")
+
 
         # SSH key
         sshParts = []
@@ -311,16 +313,23 @@ class RsyncGUI(QWidget):
         cmd = self.build_command()
         self.outputLog.append(f"$ {cmd}\n")
 
-        # Escape double quotes for AppleScript
-        escaped_cmd = cmd.replace('"', '\\"')
+        if sys.platform == "darwin":
+            # macOS: use AppleScript to launch Terminal
+            escaped_cmd = cmd.replace('"', '\\"')
+            script = f'''
+            tell application "Terminal"
+                activate
+                do script "{escaped_cmd}; echo '--- Press any key to close ---'; read -n 1"
+            end tell
+            '''
+            subprocess.run(["osascript", "-e", script])
 
-        script = f'''
-        tell application "Terminal"
-            activate
-            do script "{escaped_cmd}"
-        end tell
-        '''
-        subprocess.run(["osascript", "-e", script])
+        else:
+            # Linux: launch in user's shell (zsh)
+            subprocess.Popen([
+                "x-terminal-emulator", "-e",
+                f"zsh -c '{cmd}; echo \"--- Press any key to close ---\"; read -k1'"
+            ])
 
 
     def update_bookmark(self):
@@ -362,7 +371,6 @@ class RsyncGUI(QWidget):
         self.setMinimumSize(600, 780)   # Prevents shrinking too small
         self.resize(600, 780)  # Sets initial window size
 
-
         # Bookmark system
         self.bookmarkManager = BookmarkManager()
         self.bookmarkDropdown = QComboBox()
@@ -394,12 +402,29 @@ class RsyncGUI(QWidget):
 
         # Options
         self.optArchive = QCheckBox("Archive (-a)")
+        self.optArchive.setChecked(True)
+
         self.optVerbose = QCheckBox("Verbose (-v)")
+        self.optVerbose.setChecked(True)
+
         self.optProgress = QCheckBox("Progress (--progress)")
+        self.optProgress.setChecked(True)
+
         self.optDryRun = QCheckBox("Dry run (--dry-run)")
+        self.optDryRun.setChecked(False)
+
         self.optDelete = QCheckBox("Delete (--delete)")
+        self.optDelete.setChecked(False)
+
         self.optHumanReadable = QCheckBox("Human readable (-h)")
+        self.optHumanReadable.setChecked(True)
+
+        self.optIgnoreExisting = QCheckBox("Ignore existing (--ignore-existing)")
+        self.optIgnoreExisting.setChecked(False)
+
         self.copyContents = QCheckBox("Copy contents (trailing slash)")
+        self.copyContents.setChecked(False)
+
 
         # Command preview + output
         self.commandPreview = QTextEdit()
@@ -447,14 +472,52 @@ class RsyncGUI(QWidget):
     def update_bookmark_dropdown(self):
         self.bookmarkDropdown.blockSignals(True)
         self.bookmarkDropdown.clear()
+        self.bookmarkDropdown.addItem("-", None)
         for b in self.bookmarkManager.recent():
             self.bookmarkDropdown.addItem(b.name, b)
         self.bookmarkDropdown.blockSignals(False)
+        self.bookmarkDropdown.setCurrentIndex(0)
 
         if self.bookmarkDropdown.count() == 1:
             self.load_bookmark(0)
 
+    def reset_fields(self):
+        # Source
+        self.sourceIsRemote.setChecked(False)
+        self.sourceUser.clear()
+        self.sourceHost.clear()
+        self.sourceRemotePath.clear()
+        self.sourceLocalPath.clear()
+        self.sourceUseSSHKey.setChecked(False)
+        self.sourceSSHKeyPath.clear()
 
+        # Target
+        self.targetIsRemote.setChecked(False)
+        self.targetUser.clear()
+        self.targetHost.clear()
+        self.targetRemotePath.clear()
+        self.targetLocalPath.clear()
+        self.targetUseSSHKey.setChecked(False)
+        self.targetSSHKeyPath.clear()
+
+        # Options (defaults)
+        self.optArchive.setChecked(True)
+        self.optVerbose.setChecked(True)
+        self.optProgress.setChecked(True)
+        self.optDryRun.setChecked(False)
+        self.optDelete.setChecked(False)
+        self.optHumanReadable.setChecked(True)
+        self.optIgnoreExisting.setChecked(False)
+        self.copyContents.setChecked(False)
+
+        # Command preview + output
+        self.commandPreview.clear()
+        self.outputLog.clear()
+
+        # Refresh UI toggles
+        self.toggleSourceFields()
+        self.toggleTargetFields()
+        self.update_command_preview()
 
     def suggest_bookmark_name(self):
         src = self.sourceRemotePath.text() if self.sourceIsRemote.isChecked() else self.sourceLocalPath.text()
@@ -624,8 +687,9 @@ class RsyncGUI(QWidget):
 
         layout.addWidget(self.optDelete, 0, 1)
         layout.addWidget(self.optHumanReadable, 1, 1)
-        layout.addWidget(self.copyContents, 2, 1)
-
+        layout.addWidget(self.optIgnoreExisting, 2, 1)
+        layout.addWidget(self.copyContents, 3, 1)
+        
         layout.addItem(QSpacerItem(20, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum), 3, 1)
 
         group.setLayout(layout)
@@ -640,6 +704,7 @@ class RsyncGUI(QWidget):
             "dryRun": self.optDryRun.isChecked(),
             "delete": self.optDelete.isChecked(),
             "humanReadable": self.optHumanReadable.isChecked(),
+            "ignoreExisting": self.optIgnoreExisting.isChecked(),
             "copyContents": self.copyContents.isChecked()
         }
 
@@ -656,9 +721,16 @@ class RsyncGUI(QWidget):
         self.update_bookmark_dropdown()
 
     def load_bookmark(self, index):
-        if index < 0: return
+        if index == 0:
+            self.reset_fields()
+            return
+
+        if index < 0:
+            return
+
         bookmark = self.bookmarkDropdown.itemData(index)
-        if not bookmark: return
+        if not bookmark:
+            return
 
         s = bookmark.source
         self.sourceIsRemote.setChecked(s["isRemote"])
@@ -685,7 +757,10 @@ class RsyncGUI(QWidget):
         self.optDryRun.setChecked(o["dryRun"])
         self.optDelete.setChecked(o["delete"])
         self.optHumanReadable.setChecked(o["humanReadable"])
+        self.optIgnoreExisting.setChecked(o["ignoreExisting"])
         self.copyContents.setChecked(o["copyContents"])
+
+
 
     def connectLivePreview(self):
         fields = [
