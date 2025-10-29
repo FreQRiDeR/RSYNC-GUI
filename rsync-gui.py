@@ -325,14 +325,14 @@ class RsyncGUI(QWidget):
             subprocess.run(["osascript", "-e", script])
 
         else:
-        # Linux: try common terminals
-            full_cmd = f'zsh -c "{cmd}; echo \'--- Press any key to close ---\'; read -k1"'
-            for terminal in ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"]:
-                try:
-                    subprocess.Popen([terminal, "--", "zsh", "-c", f"{cmd}; echo '--- Press any key to close ---'; read -k1"])
-                    return
-                except FileNotFoundError:
-                    continue
+        # Linux: launch in user's shell using bash
+            try:
+                subprocess.Popen([
+                    "gnome-terminal", "--",
+                    "bash", "-c", f"{cmd}; echo '--- Press any key to close ---'; read -n 1"
+                ])
+            except FileNotFoundError:
+                self.outputLog.append("❌ Failed to launch terminal: gnome-terminal not found.\n")
 
         # Fallback: show error in outputLog
         self.outputLog.append("❌ No compatible terminal found to launch rsync.\n")
