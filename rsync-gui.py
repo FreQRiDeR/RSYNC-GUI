@@ -326,13 +326,13 @@ class RsyncGUI(QWidget):
 
         else:
         # Linux: try common terminals
-        full_cmd = f'zsh -c "{cmd}; echo \'--- Press any key to close ---\'; read -k1"'
-        for terminal in ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"]:
-            try:
-                subprocess.Popen([terminal, "--", "zsh", "-c", f"{cmd}; echo '--- Press any key to close ---'; read -k1"])
-                return
-            except FileNotFoundError:
-                continue
+            full_cmd = f'zsh -c "{cmd}; echo \'--- Press any key to close ---\'; read -k1"'
+            for terminal in ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"]:
+                try:
+                    subprocess.Popen([terminal, "--", "zsh", "-c", f"{cmd}; echo '--- Press any key to close ---'; read -k1"])
+                    return
+                except FileNotFoundError:
+                    continue
 
         # Fallback: show error in outputLog
         self.outputLog.append("❌ No compatible terminal found to launch rsync.\n")
