@@ -325,12 +325,17 @@ class RsyncGUI(QWidget):
             subprocess.run(["osascript", "-e", script])
 
         else:
-            # Linux: launch in user's shell (zsh)
-            subprocess.Popen([
-                "x-terminal-emulator", "-e",
-                f"zsh -c '{cmd}; echo \"--- Press any key to close ---\"; read -k1'"
-            ])
+        # Linux: try common terminals
+        full_cmd = f'zsh -c "{cmd}; echo \'--- Press any key to close ---\'; read -k1"'
+        for terminal in ["gnome-terminal", "konsole", "xfce4-terminal", "xterm"]:
+            try:
+                subprocess.Popen([terminal, "--", "zsh", "-c", f"{cmd}; echo '--- Press any key to close ---'; read -k1"])
+                return
+            except FileNotFoundError:
+                continue
 
+        # Fallback: show error in outputLog
+        self.outputLog.append("❌ No compatible terminal found to launch rsync.\n")
 
     def update_bookmark(self):
         index = self.bookmarkDropdown.currentIndex()
