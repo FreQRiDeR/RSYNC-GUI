@@ -6,7 +6,7 @@ a = Analysis(
     ['rsync-gui.py'],          # your entry script
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('RSYNC-GUI.PNG', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

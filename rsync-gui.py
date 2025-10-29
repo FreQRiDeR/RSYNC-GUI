@@ -372,6 +372,15 @@ class RsyncGUI(QWidget):
 
     def __init__(self):
         super().__init__()
+        from PyQt6.QtGui import QIcon
+        import sys, os
+        icon_path = os.path.join(getattr(sys, '_MEIPASS', os.path.abspath(".")), "RSYNC-GUI.PNG")
+        self.setWindowIcon(QIcon(icon_path))
+
+        self.setWindowTitle("RSYNC GUI")
+        self.setMinimumSize(600, 780)
+        self.resize(600, 780)
+
         self.setWindowTitle("RSYNC GUI")
         self.setMinimumSize(600, 780)   # Prevents shrinking too small
         self.resize(600, 780)  # Sets initial window size
