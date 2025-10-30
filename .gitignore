@@ -6,3 +6,7 @@ StuFF/RSYNC-GUI.psd
 RSYNC-GUI.xcodeproj/project.xcworkspace/xcuserdata/terramoda.xcuserdatad/UserInterfaceState.xcuserstate
 venv/bin/activate
 /venv
+build/rsync-gui/Analysis-00.toc
+/build
+/dist
+/StuFF

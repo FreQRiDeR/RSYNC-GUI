@@ -1,11 +1,13 @@
 # -*- mode: python ; coding: utf-8 -*-
+# rsync-gui-linux.spec
+
 block_cipher = None
 
 a = Analysis(
     ['rsync-gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('RSYNC-GUI.icns', '.')],
+    datas=[('RSYNC-GUI.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -24,18 +26,18 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='RSYNC-GUI',
+    name='rsync-gui',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,
+    console=False,  # No console for GUI
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='RSYNC-GUI.icns',  # Add icon here
+    icon='RSYNC-GUI.png',  # PNG works on Linux
 )
 
 coll = COLLECT(
@@ -46,20 +48,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='RSYNC-GUI'
-)
-
-app = BUNDLE(
-    coll,
-    name='RSYNC-GUI.app',
-    icon='RSYNC-GUI.icns',  # Icon for the .app bundle
-    bundle_identifier='com.rsyncgui.app',
-    info_plist={
-        'CFBundleName': 'RSYNC GUI',
-        'CFBundleDisplayName': 'RSYNC GUI',
-        'CFBundleVersion': '1.0.7',
-        'CFBundleShortVersionString': '1.0.7',
-        'NSHighResolutionCapable': 'True',
-        'LSBackgroundOnly': 'False',
-    },
+    name='rsync-gui'
 )

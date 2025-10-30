@@ -206,10 +206,11 @@ class RemoteBrowserDialog(QDialog):
             self.pathLabel.setText(f"Current: {self.current_path}")
             self.update_breadcrumbs()
             self.sftp.chdir(self.current_path)
-            for item in self.sftp.listdir():
+            items = sorted(self.sftp.listdir())  # Sort alphabetically
+            for item in items:
                 self.fileList.addItem(item)
         except Exception as e:
-            self.fileList.addItem(f"❌ Error: {e}")
+            self.fileList.addItem(f"⛔ Error: {e}")
 
     def enter_directory(self, item):
         name = item.text()
@@ -314,28 +315,39 @@ class RsyncGUI(QWidget):
         self.outputLog.append(f"$ {cmd}\n")
 
         if sys.platform == "darwin":
-            # macOS: use AppleScript to launch Terminal
             escaped_cmd = cmd.replace('"', '\\"')
             script = f'''
             tell application "Terminal"
                 activate
-                do script "{escaped_cmd}; echo '--- Press any key to close ---'; read -n 1"
+                set currentTab to do script "zsh -i -c \\"{escaped_cmd}; echo '\\nPress any key to close...'; read -k 1 -s; osascript -e 'tell application \\\\\\"Terminal\\\\\\" to close (first window whose name contains \\\\\\"rsync\\\\\\")' &> /dev/null || osascript -e 'tell application \\\\\\"Terminal\\\\\\" to close front window'\\""
             end tell
             '''
-            subprocess.run(["osascript", "-e", script])
-
+            result = subprocess.run(["osascript", "-e", script])
+            if result.returncode != 0:
+                self.outputLog.append("âŒ Failed to launch macOS Terminal.\n")
         else:
-        # Linux: launch in user's shell using bash
+            # Linux - create temporary script
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(f'''#!/bin/bash
+{cmd}
+echo ""
+echo "Press any key to close..."
+read -n 1 -s
+exit
+''')
+                script_path = f.name
+            
+            os.chmod(script_path, 0o755)
+            
             try:
                 subprocess.Popen([
                     "gnome-terminal", "--",
-                    "bash", "-c", f"{cmd}; echo '--- Press any key to close ---'; read -n 1"
+                    "bash", "-c", f"{script_path}; rm -f {script_path}; exit"
                 ])
             except FileNotFoundError:
-                self.outputLog.append("❌ Failed to launch terminal: gnome-terminal not found.\n")
+                self.outputLog.append("⛔ Failed to launch terminal: gnome-terminal not found.\n")
+                os.unlink(script_path)
 
-        # Fallback: show error in outputLog
-        self.outputLog.append("❌ No compatible terminal found to launch rsync.\n")
 
     def update_bookmark(self):
         index = self.bookmarkDropdown.currentIndex()
@@ -374,7 +386,7 @@ class RsyncGUI(QWidget):
         super().__init__()
         from PyQt6.QtGui import QIcon
         import sys, os
-        icon_path = os.path.join(getattr(sys, '_MEIPASS', os.path.abspath(".")), "RSYNC-GUI.PNG")
+        icon_path = os.path.join(getattr(sys, '_MEIPASS', os.path.abspath(".")), "RSYNC-GUI.png")
         self.setWindowIcon(QIcon(icon_path))
 
         self.setWindowTitle("RSYNC GUI")
@@ -654,7 +666,10 @@ class RsyncGUI(QWidget):
             QMessageBox.warning(self, "Missing Info", "Please fill in user, host, and SSH key path.")
             return
 
-        dialog = RemoteBrowserDialog(host, user, key, parent=self)
+        # Use existing path from field or default to home
+        start_path = field.text().strip() or "~"
+        
+        dialog = RemoteBrowserDialog(host, user, key, start_path=start_path, parent=self)
         if dialog.exec():
             selected = dialog.get_selected_path()
             if selected:
