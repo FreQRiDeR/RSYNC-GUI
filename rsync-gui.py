@@ -145,7 +145,7 @@ class RemoteBrowserDialog(QDialog):
     def __init__(self, host, user, key_path, start_path="~", parent=None):
         super().__init__(parent)
         self.setWindowTitle("Browse Remote Path")
-        self.setMinimumSize(600, 400)
+        self.setMinimumSize(600, 300)
 
         self.host = host
         self.user = user
@@ -419,7 +419,7 @@ exit
         # Bookmark system
         self.bookmarkManager = BookmarkManager()
         self.bookmarkDropdown = QComboBox()
-        self.bookmarkDropdown.currentIndexChanged.connect(self.load_bookmark)
+        self.bookmarkDropdown.currentIndexChanged.connect(lambda idx: getattr(self, "load_bookmark")(idx))
         self.saveBookmarkBtn = QPushButton("Save Job")
         self.saveBookmarkBtn.clicked.connect(self.save_bookmark)
         self.updateBookmarkBtn = QPushButton("Update")
@@ -831,8 +831,6 @@ exit
         self.optHumanReadable.setChecked(o["humanReadable"])
         self.optIgnoreExisting.setChecked(o["ignoreExisting"])
         self.copyContents.setChecked(o["copyContents"])
-
-
 
     def connectLivePreview(self):
         fields = [
