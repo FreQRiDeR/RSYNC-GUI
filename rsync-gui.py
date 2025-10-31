@@ -1,4 +1,4 @@
-import sys, os, json, uuid, subprocess
+import sys, os, json, uuid, subprocess, tempfile
 import stat
 from datetime import datetime
 from PyQt6.QtWidgets import (
