@@ -1,5 +1,5 @@
-import sys, os, json, uuid, subprocess, tempfile
-import stat
+import sys, os, json, uuid, subprocess
+import stat, tempfile
 from datetime import datetime
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QTextEdit, QPushButton,
@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QGridLayout, QSpacerItem, QSizePolicy, QComboBox, QMessageBox, 
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QIcon, QPixmap
 
 BOOKMARK_PATH = os.path.expanduser("~/.config/rsync_gui/bookmarks.json")
 
@@ -206,8 +207,7 @@ class RemoteBrowserDialog(QDialog):
             self.pathLabel.setText(f"Current: {self.current_path}")
             self.update_breadcrumbs()
             self.sftp.chdir(self.current_path)
-            items = sorted(self.sftp.listdir())  # Sort alphabetically
-            for item in items:
+            for item in self.sftp.listdir():
                 self.fileList.addItem(item)
         except Exception as e:
             self.fileList.addItem(f"⛔ Error: {e}")
@@ -225,7 +225,7 @@ class RemoteBrowserDialog(QDialog):
                 self.selectedPath = full_path
                 self.accept()
         except Exception as e:
-            self.fileList.addItem(f"❌ Error accessing {full_path}: {e}")
+            self.fileList.addItem(f"⛔ Error accessing {full_path}: {e}")
             self.selectedPath = full_path
             self.accept()
 
@@ -308,23 +308,36 @@ class RsyncGUI(QWidget):
         parts.append(f'"{dst}"')
         return " ".join(parts)
 
-    import subprocess
-
     def run_rsync(self):
         cmd = self.build_command()
         self.outputLog.append(f"$ {cmd}\n")
 
         if sys.platform == "darwin":
-            escaped_cmd = cmd.replace('"', '\\"')
-            script = f'''
+            # Create a temporary shell script
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
+                f.write(f'''#!/bin/zsh
+{cmd}
+echo ""
+echo "Press any key to close..."
+read -k 1 -s
+osascript -e 'tell application "Terminal" to close front window' &
+exit
+''')
+                script_path = f.name
+            
+            os.chmod(script_path, 0o755)
+            
+            applescript = f'''
             tell application "Terminal"
                 activate
-                set currentTab to do script "zsh -i -c \\"{escaped_cmd}; echo '\\nPress any key to close...'; read -k 1 -s; osascript -e 'tell application \\\\\\"Terminal\\\\\\" to close (first window whose name contains \\\\\\"rsync\\\\\\")' &> /dev/null || osascript -e 'tell application \\\\\\"Terminal\\\\\\" to close front window'\\""
+                do script "{script_path}; rm -f {script_path}"
             end tell
             '''
-            result = subprocess.run(["osascript", "-e", script])
+            result = subprocess.run(["osascript", "-e", applescript])
             if result.returncode != 0:
-                self.outputLog.append("âŒ Failed to launch macOS Terminal.\n")
+                self.outputLog.append("⛔ Failed to launch macOS Terminal.\n")
+                os.unlink(script_path)
+
         else:
             # Linux - create temporary script
             with tempfile.NamedTemporaryFile(mode='w', suffix='.sh', delete=False) as f:
@@ -384,18 +397,24 @@ exit
 
     def __init__(self):
         super().__init__()
-        from PyQt6.QtGui import QIcon
         import sys, os
-        icon_path = os.path.join(getattr(sys, '_MEIPASS', os.path.abspath(".")), "RSYNC-GUI.png")
+        
+        # Platform-specific icon handling
+        if sys.platform == "darwin":
+            icon_file = "RSYNC-GUI.icns"
+        else:
+            icon_file = "RSYNC-GUI.png"
+        
+        icon_path = os.path.join(getattr(sys, '_MEIPASS', os.path.abspath(".")), icon_file)
+        
+        # Store for later use in header
+        self.icon_path = icon_path
+        
         self.setWindowIcon(QIcon(icon_path))
 
         self.setWindowTitle("RSYNC GUI")
-        self.setMinimumSize(600, 780)
-        self.resize(600, 780)
-
-        self.setWindowTitle("RSYNC GUI")
-        self.setMinimumSize(600, 780)   # Prevents shrinking too small
-        self.resize(600, 780)  # Sets initial window size
+        self.setMinimumSize(600, 900)   # Increased for header
+        self.resize(600, 900)  # Sets initial window size
 
         # Bookmark system
         self.bookmarkManager = BookmarkManager()
@@ -468,6 +487,30 @@ exit
 
         # Layout
         layout = QVBoxLayout()
+        
+        # Add header with icon and title
+        headerLayout = QHBoxLayout()
+        headerLayout.addStretch()
+        
+        # Icon
+        iconLabel = QLabel()
+        pixmap = QPixmap(self.icon_path)
+        if not pixmap.isNull():
+            scaledPixmap = pixmap.scaled(64, 64, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            iconLabel.setPixmap(scaledPixmap)
+        headerLayout.addWidget(iconLabel)
+        
+        # Title
+        titleLabel = QLabel("RSYNC GUI")
+        titleLabel.setStyleSheet("font-size: 24px; font-weight: bold; margin-left: 10px;")
+        headerLayout.addWidget(titleLabel)
+        
+        headerLayout.addStretch()
+        layout.addLayout(headerLayout)
+        
+        # Add spacing after header
+        layout.addSpacing(10)
+        
         layout.addLayout(self.buildBookmarkBar())
         layout.addWidget(self.buildSourceGroup())
         layout.addWidget(self.buildTargetGroup())
