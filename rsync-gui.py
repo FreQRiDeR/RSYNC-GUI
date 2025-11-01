@@ -207,13 +207,45 @@ class RemoteBrowserDialog(QDialog):
             self.pathLabel.setText(f"Current: {self.current_path}")
             self.update_breadcrumbs()
             self.sftp.chdir(self.current_path)
-            for item in self.sftp.listdir():
+            
+            # Get list of items and sort them
+            items = self.sftp.listdir()
+            
+            # Separate directories and files, then sort each
+            dirs = []
+            files = []
+            
+            for item in items:
+                full_path = os.path.join(self.current_path, item)
+                try:
+                    attr = self.sftp.stat(full_path)
+                    if stat.S_ISDIR(attr.st_mode):
+                        dirs.append(item)
+                    else:
+                        files.append(item)
+                except:
+                    files.append(item)  # If we can't stat, assume it's a file
+            
+            # Sort both lists case-insensitively
+            dirs.sort(key=str.lower)
+            files.sort(key=str.lower)
+            
+            # Add directories first (with folder icon), then files
+            for item in dirs:
+                self.fileList.addItem(f"📁 {item}")
+            for item in files:
                 self.fileList.addItem(item)
+                
         except Exception as e:
             self.fileList.addItem(f"⛔ Error: {e}")
 
     def enter_directory(self, item):
         name = item.text()
+        
+        # Remove folder icon prefix if present
+        if name.startswith("📁 "):
+            name = name[2:]  # Remove "📁 " prefix
+        
         full_path = os.path.join(self.current_path, name)
 
         try:
