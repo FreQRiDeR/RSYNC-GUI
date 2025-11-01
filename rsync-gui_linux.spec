@@ -4,7 +4,7 @@
 block_cipher = None
 
 # Version info
-version = '1.0.7'
+version = '1.0.5'
 
 a = Analysis(
     ['rsync-gui.py'],
@@ -29,7 +29,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='rsync-gui',
+    name='RSYNC-GUI',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

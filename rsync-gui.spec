@@ -55,10 +55,10 @@ app = BUNDLE(
     icon='RSYNC-GUI.icns',  # Icon for the .app bundle
     bundle_identifier='com.rsyncgui.app',
     info_plist={
-        'CFBundleName': 'RSYNC GUI',
-        'CFBundleDisplayName': 'RSYNC GUI',
-        'CFBundleVersion': '1.0.7',
-        'CFBundleShortVersionString': '1.0.7',
+        'CFBundleName': 'RSYNC-GUI',
+        'CFBundleDisplayName': 'RSYNC-GUI',
+        'CFBundleVersion': '1.0.5',
+        'CFBundleShortVersionString': '1.0.5',
         'NSHighResolutionCapable': 'True',
         'LSBackgroundOnly': 'False',
     },
