@@ -170,11 +170,13 @@ class RemoteBrowserDialog(QDialog):
         btnBar = QHBoxLayout()
         self.upBtn = QPushButton("⬆ Up")
         self.upBtn.setFixedSize(80, 28)
+        self.upBtn.setStyleSheet("border-radius: 4px;")
         self.upBtn.clicked.connect(self.go_up_directory)
         btnBar.addWidget(self.upBtn)
         btnBar.addStretch()
         self.selectBtn = QPushButton("Use This Path")
         self.selectBtn.setFixedSize(120, 28)
+        self.selectBtn.setStyleSheet("border-radius: 4px;")
         self.selectBtn.clicked.connect(self.accept)
         btnBar.addWidget(self.selectBtn)
         self.layout.addLayout(btnBar)
@@ -207,7 +209,8 @@ class RemoteBrowserDialog(QDialog):
             self.pathLabel.setText(f"Current: {self.current_path}")
             self.update_breadcrumbs()
             self.sftp.chdir(self.current_path)
-            for item in self.sftp.listdir():
+            items = sorted(self.sftp.listdir())  # Sort alphabetically
+            for item in items:
                 self.fileList.addItem(item)
         except Exception as e:
             self.fileList.addItem(f"⛔ Error: {e}")
@@ -398,6 +401,28 @@ exit
     def __init__(self):
         super().__init__()
         import sys, os
+        
+        # Set global button style for consistent rounded corners across platforms
+        button_style = """
+            QPushButton {
+                border-radius: 6px;
+                padding: 5px 10px;
+                min-height: 13px;
+                max-height: 13px;
+                background-color: palette(button);
+                border: 1px solid palette(mid);
+            }
+            QPushButton:hover {
+                background-color: palette(light);
+            }
+            QPushButton:pressed {
+                background-color: palette(midlight);
+            }
+            QPushButton:disabled {
+                color: palette(mid);
+            }
+        """
+        self.setStyleSheet(button_style)
         
         # Platform-specific icon handling
         if sys.platform == "darwin":
