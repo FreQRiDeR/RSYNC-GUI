@@ -170,13 +170,11 @@ class RemoteBrowserDialog(QDialog):
         btnBar = QHBoxLayout()
         self.upBtn = QPushButton("⬆ Up")
         self.upBtn.setFixedSize(80, 28)
-        self.upBtn.setStyleSheet("border-radius: 4px;")
         self.upBtn.clicked.connect(self.go_up_directory)
         btnBar.addWidget(self.upBtn)
         btnBar.addStretch()
         self.selectBtn = QPushButton("Use This Path")
         self.selectBtn.setFixedSize(120, 28)
-        self.selectBtn.setStyleSheet("border-radius: 4px;")
         self.selectBtn.clicked.connect(self.accept)
         btnBar.addWidget(self.selectBtn)
         self.layout.addLayout(btnBar)
@@ -209,14 +207,45 @@ class RemoteBrowserDialog(QDialog):
             self.pathLabel.setText(f"Current: {self.current_path}")
             self.update_breadcrumbs()
             self.sftp.chdir(self.current_path)
-            items = sorted(self.sftp.listdir())  # Sort alphabetically
+            
+            # Get list of items and sort them
+            items = self.sftp.listdir()
+            
+            # Separate directories and files, then sort each
+            dirs = []
+            files = []
+            
             for item in items:
+                full_path = os.path.join(self.current_path, item)
+                try:
+                    attr = self.sftp.stat(full_path)
+                    if stat.S_ISDIR(attr.st_mode):
+                        dirs.append(item)
+                    else:
+                        files.append(item)
+                except:
+                    files.append(item)  # If we can't stat, assume it's a file
+            
+            # Sort both lists case-insensitively
+            dirs.sort(key=str.lower)
+            files.sort(key=str.lower)
+            
+            # Add directories first (with folder icon), then files
+            for item in dirs:
+                self.fileList.addItem(f"📁 {item}")
+            for item in files:
                 self.fileList.addItem(item)
+                
         except Exception as e:
             self.fileList.addItem(f"⛔ Error: {e}")
 
     def enter_directory(self, item):
         name = item.text()
+        
+        # Remove folder icon prefix if present
+        if name.startswith("📁 "):
+            name = name[2:]  # Remove "📁 " prefix
+        
         full_path = os.path.join(self.current_path, name)
 
         try:
@@ -401,28 +430,6 @@ exit
     def __init__(self):
         super().__init__()
         import sys, os
-        
-        # Set global button style for consistent rounded corners across platforms
-        button_style = """
-            QPushButton {
-                border-radius: 6px;
-                padding: 5px 10px;
-                min-height: 13px;
-                max-height: 13px;
-                background-color: palette(button);
-                border: 1px solid palette(mid);
-            }
-            QPushButton:hover {
-                background-color: palette(light);
-            }
-            QPushButton:pressed {
-                background-color: palette(midlight);
-            }
-            QPushButton:disabled {
-                color: palette(mid);
-            }
-        """
-        self.setStyleSheet(button_style)
         
         # Platform-specific icon handling
         if sys.platform == "darwin":
