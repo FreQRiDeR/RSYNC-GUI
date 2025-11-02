@@ -166,7 +166,7 @@ class RemoteBrowserDialog(QDialog):
         self.fileList.itemDoubleClicked.connect(self.enter_directory)
         self.layout.addWidget(self.fileList)
 
-        # Button bar
+       # Button bar
         btnBar = QHBoxLayout()
         self.upBtn = QPushButton("⬆ Up")
         self.upBtn.setFixedSize(80, 28)
@@ -181,6 +181,7 @@ class RemoteBrowserDialog(QDialog):
 
         self.setLayout(self.layout)
 
+        self.setLayout(self.layout)
         self.selectedPath = None
         self.client = None
         self.sftp = None
