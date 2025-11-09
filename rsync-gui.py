@@ -1,13 +1,38 @@
 import sys, os, json, uuid, subprocess
 import stat, tempfile
 from datetime import datetime
+from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QLabel, QLineEdit, QTextEdit, QPushButton,
     QVBoxLayout, QHBoxLayout, QCheckBox, QGroupBox, QFileDialog,
     QGridLayout, QSpacerItem, QSizePolicy, QComboBox, QMessageBox, 
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtGui import QIcon, QPixmap, QDragEnterEvent, QDropEvent
+
+class DragDropLineEdit(QLineEdit):
+    """QLineEdit with drag and drop support for files and folders"""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAcceptDrops(True)
+    
+    def dragEnterEvent(self, event: QDragEnterEvent):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+    
+    def dropEvent(self, event: QDropEvent):
+        if event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            if urls:
+                # Get the first URL and convert to local path
+                path = urls[0].toLocalFile()
+                # Normalize the path (removes trailing slashes, resolves .., etc.)
+                path = os.path.normpath(path)
+                self.setText(path)
+                event.acceptProposedAction()
+        else:
+            event.ignore()
 
 BOOKMARK_PATH = os.path.expanduser("~/.config/rsync_gui/bookmarks.json")
 
@@ -465,7 +490,7 @@ exit
         self.sourceUser = QLineEdit()
         self.sourceHost = QLineEdit()
         self.sourceRemotePath = QLineEdit()
-        self.sourceLocalPath = QLineEdit()
+        self.sourceLocalPath = DragDropLineEdit()
         self.sourceUseSSHKey = QCheckBox("Use SSH key")
         self.sourceSSHKeyPath = QLineEdit()
 
@@ -474,7 +499,7 @@ exit
         self.targetUser = QLineEdit()
         self.targetHost = QLineEdit()
         self.targetRemotePath = QLineEdit()
-        self.targetLocalPath = QLineEdit()
+        self.targetLocalPath = DragDropLineEdit()
         self.targetUseSSHKey = QCheckBox("Use SSH key")
         self.targetSSHKeyPath = QLineEdit()
 
@@ -714,12 +739,12 @@ exit
         self.targetSSHBox.addWidget(self.targetSSHKeyPath)
 
         self.targetLocalBox = QHBoxLayout()
-        self.targetLocalBox.addWidget(QLabel("Local Path"))
+        
         self.targetLocalBox.addWidget(self.targetLocalPath)
         browseBtn = QPushButton("Browse")
         browseBtn.clicked.connect(lambda: self.pick_folder(self.targetLocalPath))
         self.targetLocalBox.addWidget(browseBtn)
-
+        self.targetLocalBox.addWidget(QLabel("Local Path"))
         layout.addLayout(self.targetRemoteBox)
         layout.addLayout(self.targetSSHBox)
         layout.addLayout(self.targetLocalBox)
