@@ -4,5 +4,10 @@ StuFF/README.rtfd/TXT.rtf
 StuFF/RSYNC-GUI converted.dmg
 StuFF/RSYNC-GUI.psd
 RSYNC-GUI.xcodeproj/project.xcworkspace/xcuserdata/terramoda.xcuserdatad/UserInterfaceState.xcuserstate
-/StuFF
+venv/bin/activate
 /venv
+build/rsync-gui/Analysis-00.toc
+/build
+/dist
+/StuFF
+RSYNC-GUI_1.0.5_amd64.deb
