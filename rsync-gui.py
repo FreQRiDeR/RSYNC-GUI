@@ -111,7 +111,7 @@ class SSHKeyBrowserDialog(QDialog):
         self.keyList = QListWidget()
         self.preview = QLabel("Select a key to preview its contents.")
         self.preview.setWordWrap(True)
-        self.preview.setStyleSheet("font-family: monospace;")
+        self.preview.setStyleSheet("font-family: 'Courier New', Courier;")
 
         self.selectBtn = QPushButton("Use Selected Key")
         self.selectBtn.setEnabled(False)
@@ -533,11 +533,11 @@ exit
         self.commandPreview = QTextEdit()
         self.commandPreview.setReadOnly(True)
         self.commandPreview.setMaximumHeight(60)
-        self.commandPreview.setStyleSheet("font-family: monospace;")
+        self.commandPreview.setStyleSheet("font-family: 'Courier New', Courier;")
 
         self.outputLog = QTextEdit()
         self.outputLog.setReadOnly(True)
-        self.outputLog.setStyleSheet("font-family: monospace;")
+        self.outputLog.setStyleSheet("font-family: 'Courier New', Courier;")
 
         # Buttons
         runBtn = QPushButton("Run rsync")
